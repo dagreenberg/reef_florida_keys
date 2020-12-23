@@ -1,12 +1,8 @@
 #RVC data & MARSS analysis
 rm(list=ls())
-setwd("C:/Users/Dan/Desktop/Scripps - Project 1 RVC and REEF/RVC")
-library(rvc);library(dplyr);library(magrittr);library(tidyverse); library(MARSS)
+setwd("C:/Users/14388/Desktop/reef_florida_keys_data")
+library(dplyr);library(magrittr);library(tidyverse); library(MARSS)
 library(stringr);library(lubridate)
-
-
-##TEST TEST
-
 
 ####1. Functions ####
 #Aggregate by SSU (15m, 15min diameter survey;some samples are broken down to multiple rows per SSU survey)
@@ -47,19 +43,19 @@ psu_relative_abund = function(x) {
 psu_density_year = function(x) {
   x %>% psu_density() %>% 
     group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_tot_abund=mean(tot.abundance),mean_ssu_abundance=mean(mean.abundance),var.tot=var(tot.abundance),var.mean=var(mean.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1))
+    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
 }
 
 #Create a yearly aggregate of relative abundance counts and fill in missing years
 psu_relative_abund_year = function(x) {x %>% psu_relative_abund() %>%
     group_by(YEAR,RA) %>%  summarise(n=n()) %>% spread(key=RA, n, fill = 0, sep = ".") %>% as.data.frame() %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1))
+    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
 }
 
 #Create a yearly aggregate of relative and transformed abundance and fill in missing years
 psu_transform_year = function(x) {x %>% psu_relative_abund() %>%
     group_by(YEAR) %>% summarise(mean.RA.cat=mean(RA),mean.abund.trans=mean(abund_trans),var.abund.trans=var(abund_trans)) %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1))
+    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
 }
 
 rvc_batch = function(x){
@@ -76,15 +72,13 @@ rvc_batch = function(x){
 }
 
 # Create function to calculate spp specific abundance scores by year for a given region
-REEF_pull <- function(R,GZ,sp){
+REEF_pull <- function(R,GZ,sp,geog){
   # R is the REEF data in flat format (raw format provided by REEF)
   # GZ is the geozone you are interested in summarizing (can be any length)
   # sp is the matrix of sp you have previously used to subset the R raw data
-  
-  
+  # geog are the dive sites (lat/lons) you want to include for the time-series
   Time_series<- list()
   #pull only those data (rows) from the geozone given to function
-  
   for(i in 1:length(sp)){
     TempDat<-R[which(substring(R$site,1,nchar(GZ))==GZ),] #Subset to sub-region
     Temp_sp<- subset(TempDat,sciName==sp[i]) #Extract out all occurrences of species
@@ -129,87 +123,77 @@ REEF_pull <- function(R,GZ,sp){
   return(Time_series)
 } #end function
 
+stan_plot<- 
+
 
 #####2. Data Loading and site matching####
-
 ###REEF data
-REEF_fish<- read.csv("./Tropical Western Atlantic/TWA.csv")
-REEF_survey<- read.csv("./Tropical Western Atlantic/TWAsurveys.csv")
-m<- match(REEF_fish$formid,REEF_survey$formid) #match surveys
+REEF<- read.csv("./REEF Tropical Western Atlantic/TWA.csv") #Reef sightings 
+REEF_survey<- read.csv("./REEF Tropical Western Atlantic/TWAsurveys.csv") #Survey metadata
+m<- match(REEF$formid,REEF_survey$formid) #match sightings to surveys
 REEF_fish[,14:30]<- REEF_survey[m,4:20] #merge survey level data
 
 #Florida keys data
-fk_99_18= read.csv("Florida_Keys_RVC.csv")
-rvc_sites<- read.csv("PSU geog.csv")
+fk_99_18<- read.csv("./RVC/Florida_Keys_RVC.csv") #RVC survey data from 1999 to 2018
+fk_79_98<- read.csv("./RVC/Florida_keys_pre_1999.txt") #RVC survey dating from 1979 to 1998
+
+
+fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9, these represent 0s
+
+t<- fk_79_98 %>% group_by(station_nr,psu,YEAR,spcode) %>%  #For each SSU and species
+  summarise(NUM=n(),sum=sum(len),id=ID[1]) %>% arrange(psu,YEAR,station_nr,spcode) #Summarize the number of individual entries (non-zero lengths indicate sightings)
+t$NUM<- ifelse(t$sum==0,0,t$NUM) #NUM also counts zeros, now only presences
+
+#Put back NUM into original data-frame, now each row represents a SSU survey
+m<- match(fk_79_98$ID,t$id) #match back the sums to the survey id 
+fk_79_98$NUM<- t$NUM[m] #Create the number column in this survey set
+fk_79_98<- fk_79_98[complete.cases(fk_79_98$NUM),] #Reduce down to the summed count only
+#Synonymize column names
+colnames(fk_79_98)<- c(colnames(fk_99_18)[1],colnames(fk_99_18)[3:5],colnames(fk_99_18)[2],colnames(fk_99_18)[6],colnames(fk_99_18)[7:18],colnames(fk_99_18)[20],colnames(fk_99_18)[19]) 
+#Join together datasets
+fk_79_18<- full_join(fk_99_18,fk_79_98)
 
 ###REEF geog
 library(sp)
-reef_geog<- read.csv("./Tropical Western Atlantic/TWAgeog.csv")
-reef_geog$region.id<- substr(reef_geog$geogid, 1,4)
-reef_geog$lat_full<- reef_geog$lat
-reef_geog<-reef_geog%>%
+reef_geog<- read.csv("./REEF Tropical Western Atlantic/TWAgeog.csv")
+reef_geog$region.id<- substr(reef_geog$geogid, 1,4) #Get the region id (first four digits)
+reef_geog$lat_full<- reef_geog$lat #Copy of the full latitude
+reef_geog$lon_full<- reef_geog$lon #Copy of the full longitude
+reef_geog<-reef_geog%>% #Separate out degrees and minutes
   separate(lat,into=c("lat_deg","lat_min"),sep=" ")%>%
   separate(lon,into=c("lon_deg","lon_min"),sep=" ")
 
 #convert desired columns numeric
 col.num<-c("lat_deg","lat_min","lon_deg","lon_min")
 reef_geog[col.num]<-sapply(reef_geog[col.num],as.numeric)
-reef_geog<-reef_geog[complete.cases(reef_geog),]
+reef_geog<-reef_geog[complete.cases(reef_geog),] #Discard sites with no coordinates
 
 #Convert to decimal degrees (matches RVC lat/lons)
-library(biogeo)
-reef_geog$lat.dd<- dms2dd(abs(reef_geog$lat_deg),reef_geog$lat_min,reef_geog$lat_sec,ns=ifelse(reef_geog$lat_deg>0,'N','S'))
-reef_geog$lon.dd<- dms2dd(abs(reef_geog$lon_deg),reef_geog$lon_min,reef_geog$lon_sec,ns=rep('W',nrow(reef_geog)))
+reef_geog$lat_dd<- reef_geog$lat_deg+reef_geog$lat_min/60
+reef_geog$lon_dd<- reef_geog$lon_deg+reef_geog$lon_min/60
 
-#Extract out florida key subregions
-Key_West<- subset(reef_geog,region.id=='3408')
-Looe_Key<- subset(reef_geog,region.id=='3408')
-Marathon<- subset(reef_geog,region.id=='3405')
-Long_Key<- subset(reef_geog,region.id=='3407')
-Islamorada<- subset(reef_geog,region.id=='3404')
-Key_Largo<- subset(reef_geog,region.id=='3403')
-Biscayne<- subset(reef_geog,region.id=='3302')
+#Extract out florida key subregions for select zones
+reef_3403_sites<- subset(reef_geog,region.id=='3403')
+reef_3404_sites<- subset(reef_geog,region.id=='3404')
+reef_3408_sites<- subset(reef_geog,region.id=='3408')
 
-FK_DT<- subset(reef_geog,region.id=='3408'|region.id=='3405'|region.id=='3407'|region.id=='3404'|region.id=='3403'|region.id=='3302')
 
 #RVC sites
+fk_79_18$LAT_LON<- paste(fk_79_18$LAT_DEGREES,fk_79_18$LON_DEGREES,sep='_') #Find unique geographic position
+rvc_sites<- data.frame(lat=fk_79_18$LAT_DEGREES,lon=fk_79_18$LON_DEGREES,lat_lon=fk_79_18$LAT_LON) 
+rvc_sites<- distinct(rvc_sites,lat_lon,.keep_all = T) #keep unique sample sites from the RVC surveys
+
+#Match up RVC sites to REEF sites
 library(rgeos)
-set2 <- SpatialPoints(cbind(FK_DT$lat.dd,FK_DT$lon.dd))
-set1 <- SpatialPoints(cbind(rvc_sites$LAT_DEGREES,rvc_sites$LON_DEGREES))
-matched_reef_site<- apply(gDistance(set1, set2, byid=TRUE), 2, which.min)
-rvc_sites$REEF_site <- FK_DT$geog[matched_reef_site]
-rvc_sites$REEF_lat<- FK_DT$lat.dd[matched_reef_site]
-rvc_sites$REEF_lon<- FK_DT$lon.dd[matched_reef_site]
-rvc_sites$region.id<- FK_DT$region.id[matched_reef_site]
-fk_99_18[,24:27]<- rvc_sites[match(fk_99_18$PRIMARY_SAMPLE_UNIT,rvc_sites$PRIMARY_SAMPLE_UNIT),24:27]
-
-fk_79_98<- read.csv("Greenberg_FL_Pre1999.txt")
-fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9 with 0
-
-t<- fk_79_98 %>% group_by(station_nr,psu,YEAR,spcode) %>%  
-  summarise(NUM=n(),sum=sum(len),id=ID[1]) %>% arrange(psu,YEAR,station_nr,spcode)
-t$NUM<- ifelse(t$sum==0,0,t$NUM)
-
-#Put back NUM into original data-frame, now each row represents a SSU survey
-m<- match(fk_79_98$ID,t$id)
-fk_79_98$NUM<- t$NUM[m]
-fk_79_98<- fk_79_98[complete.cases(fk_79_98$NUM),]
-fk_93_98<- subset(fk_79_98,YEAR>=1993)
-
-fk_93_98_sites<- distinct(fk_93_98,psu,.keep_all = T)
-set3<- SpatialPoints(cbind(fk_93_98_sites$lat_deg,fk_93_98_sites$lon_deg))
-matched_reef_site2<- apply(gDistance(set3, set2, byid=TRUE), 2, which.min)
-fk_93_98_sites$REEF_site <- FK_DT$geog[matched_reef_site2]
-fk_93_98_sites$REEF_lat<- FK_DT$lat.dd[matched_reef_site2]
-fk_93_98_sites$REEF_lon<- FK_DT$lon.dd[matched_reef_site2]
-fk_93_98_sites$region.id<- FK_DT$region.id[matched_reef_site2]
-
-fk_93_98[,21:24]<- fk_93_98_sites[match(fk_93_98$psu,fk_93_98_sites$psu),21:24]
-
-#Synonymize column names
-colnames(fk_93_98)<- c(colnames(fk_99_18)[1],colnames(fk_99_18)[3:5],colnames(fk_99_18)[2],colnames(fk_99_18)[6],colnames(fk_99_18)[7:18],colnames(fk_99_18)[20],colnames(fk_99_18)[19],colnames(fk_99_18)[24:27]) 
-#Join together so RVC data covers from 1993 to 2018
-fk_93_18<- full_join(fk_99_18,fk_93_98)
+set1 <- SpatialPoints(cbind(rvc_sites$lat,rvc_sites$lon)) #Set of RVC site points
+set2 <- SpatialPoints(cbind(reef_geog$lat_dd,reef_geog$lon_dd)) #Set of REEF site points
+matched_reef_site<- apply(gDistance(set1, set2, byid=TRUE), 2, which.min) #Find closest REEF site by geographic distance between point sets
+rvc_sites$REEF_site <- reef_geog$geog[matched_reef_site]
+rvc_sites$REEF_lat<- reef_geog$lat_dd[matched_reef_site]
+rvc_sites$REEF_lon<- reef_geog$lon_dd[matched_reef_site]
+rvc_sites$region.id<- reef_geog$region.id[matched_reef_site]
+fk_79_18[,25:28]<- rvc_sites[match(fk_79_18$LAT_LON,rvc_sites$lat_lon),4:7]
+fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
 #### 3. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
