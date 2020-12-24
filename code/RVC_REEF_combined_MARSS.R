@@ -140,7 +140,7 @@ R<- REEF %>% group_by(formid) %>% summarize(n=n(),sum.abundance=sum(abundance))
 R_filter<- subset(R,n==sum.abundance) #Some surveys have all 1s for every species - may be recording occurrence only, removing these
 
 #Remove these surveys
-R <- subset(REEF, formid %notin% R_filter$formid)
+R<- subset(REEF, formid %notin% R_filter$formid)
 
 # Get rid of  rows of data with no date reported
 R<-R[-which(R$date=="0000-00-00"),]
@@ -167,24 +167,23 @@ reef_geog<-reef_geog[complete.cases(reef_geog),] #Discard sites with no coordina
 
 #Convert to decimal degrees (matches RVC lat/lons)
 reef_geog$lat_dd<- reef_geog$lat_deg+reef_geog$lat_min/60
-reef_geog$lon_dd<- reef_geog$lon_deg+reef_geog$lon_min/60
-
-# Thin  raw data to exclude dives shorter than 20min, longer than 120min
-R<-R[R$btime>20,]
-R<-R[R$btime<120,]
-
-# Thin the data to remove night dives (start before 5am or after 8pm)
-R<-R[R$start>5,]
-R<-R[R$start<20,]
+reef_geog$lon_dd<- reef_geog$lon_deg-reef_geog$lon_min/60
 
 # Remove sites without lat-long (b/c those sites are probably janky anyway)
 R<-filter(R, R$geogr %in% reef_geog$geogid)
+
+# Thin  raw data to exclude dives shorter than 20min, longer than 120min
+R<-R[as.numeric(R$btime)>20,]
+R<-R[as.numeric(R$btime)<120,]
+
+# Thin the data to remove night dives (start before 5am or after 8pm)
+R<-R[as.numeric(R$start)>5,]
+R<-R[as.numeric(R$start)<20,]
 
 
 ####Florida keys RVC data
 fk_99_18<- read.csv("./RVC/Florida_Keys_RVC.csv") #RVC survey data from 1999 to 2018
 fk_79_98<- read.csv("./RVC/Florida_keys_pre_1999.txt") #RVC survey dating from 1979 to 1998
-
 
 fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9, these represent 0s
 
@@ -196,12 +195,11 @@ t$NUM<- ifelse(t$sum==0,0,t$NUM) #NUM also counts zeros, now only presences
 m<- match(fk_79_98$ID,t$id) #match back the sums to the survey id 
 fk_79_98$NUM<- t$NUM[m] #Create the number column in this survey set
 fk_79_98<- fk_79_98[complete.cases(fk_79_98$NUM),] #Reduce down to the summed count only
+
 #Synonymize column names
 colnames(fk_79_98)<- c(colnames(fk_99_18)[1],colnames(fk_99_18)[3:5],colnames(fk_99_18)[2],colnames(fk_99_18)[6],colnames(fk_99_18)[7:18],colnames(fk_99_18)[20],colnames(fk_99_18)[19]) 
 #Join together datasets
 fk_79_18<- full_join(fk_99_18,fk_79_98)
-
-
 
 #Extract out florida key subregions for select zones
 reef_3403_sites<- subset(reef_geog,region.id=='3403')
@@ -225,6 +223,43 @@ rvc_sites$region.id<- reef_geog$region.id[matched_reef_site]
 fk_79_18[,25:28]<- rvc_sites[match(fk_79_18$LAT_LON,rvc_sites$lat_lon),4:7]
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
+####3. Geographic filtering ####
+#### Intersect REEF & RVC spatial data ####
+library(sf)
+rvc_grid<-st_read(dsn='RVC Grid', layer='FlaKeys_Grid') #Read in Florida Keys sampling grid
+rvc_grid_84<- st_transform(rvc_grid,4326) #Set to WGS84
+
+#3403 regions
+reef_pts<-st_as_sf(x = reef_geog, 
+                        coords = c("lon_dd", "lat_dd"),
+                        crs = 4326)
+
+rvc_pts<-st_as_sf(x = rvc_sites, 
+                       coords = c("lon", "lat"),
+                       crs = 4326)
+
+grid_match<- st_intersects(reef_pts,rvc_grid_84,sparse=T)
+reef_pts$grid_match<- NA
+for(i in 1:nrow(reef_pts)){
+  if(length(grid_match[[i]])==1){
+    reef_pts$grid_match[i]=grid_match[[i]]  
+  }else{
+    reef_pts$grid_match[i]=NA
+  }
+}
+reef_pts$hab_class<- rvc_grid$habclass[reef_pts$grid_match]
+
+grid_match_rvc<- st_intersects(rvc_pts,rvc_grid_84,sparse=T)
+rvc_pts$grid_match<- NA
+for(i in 1:nrow(rvc_pts)){
+  if(length(grid_match_rvc[[i]])==1){
+    rvc_pts$grid_match[i]=grid_match_rvc[[i]]  
+  }else{
+    rvc_pts$grid_match[i]=NA
+  }
+}
+rvc_pts$hab_class<- rvc_grid$habclass[rvc_pts$grid_match]
+
 #### 3. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
 fish_dat<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
@@ -233,11 +268,10 @@ fish_fam<- read.csv('./Tropical Western Atlantic/TWAfamily.csv')
 fish_rvc<- read.csv("Florida_keys_taxonomic_data.csv")
 fish_rvc<- subset(fish_rvc,gsub('.*\\ ', '', fish_rvc$SCINAME)!='sp.') #remove unknown species
 m<- match(fish_rvc$SCINAME,fish_dat$sciname2)
-miss<- subset(fish_rvc,is.na(m)==T) ###8 species that did not match
+miss<- subset(fish_rvc,is.na(m)==T) #8 species that did not match
 
 #Filter down the species in RVC
 filter_rvc<- subset(fish_rvc,is.na(m)==F)
-
 filter_rvc<- subset(filter_rvc,EXP_SIGHTING>1)
 
 #Filter the RVC dataset to these species
@@ -245,7 +279,7 @@ m<- match(fk_93_18$SPECIES_CD,filter_rvc$SPECIES_CD)
 fk_93_18_sp<- subset(fk_93_18,is.na(m)==F)
 
 #Separate out RVC data into the REEF sub-regions
-rvc_3403<- subset(fk_93_18_sp,region.id=='3403')
+rvc_3403_geog<- subset(fk_93_18_sp,region.id=='3403')
 rvc_3404<- subset(fk_93_18_sp,region.id=='3404')
 rvc_3408<- subset(fk_93_18_sp,region.id=='3408')
 
@@ -258,13 +292,11 @@ rvc_trends_3408<- rvc_batch(rvc_3408)
 
 
 
-
-
 R_3404<- subset(R, geogr4==3404)
 R_3408<- subset(R, geogr4==3408)
 
 
-reef_3403_sites<- R_3403 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
+reef_3403_sites<- R %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
 write.csv(reef_3403_sites,'3403_reef_SITES.csv')
 reef_3404_sites<- R_3404 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
 write.csv(reef_3404_sites,'3404_reef_SITES.csv')
@@ -272,104 +304,6 @@ reef_3408_sites<- R_3408 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),
 write.csv(reef_3408_sites,'3408_reef_SITES.csv')
 
 
-#### Intersect REEF & RVC spatial data ####
-library(sf)
-
-rvc_grid<-st_read(dsn='RVC Grid', layer='FlaKeys_Grid')
-rvc_grid_84<- st_transform(rvc_grid,4326)
-
-#3403 regions
-reef_3403_pts<-st_as_sf(x = reef_3403_sites, 
-                coords = c("lon", "lat"),
-                crs = 4326)
-
-rvc_3403_pts<-st_as_sf(x = rvc_3403_sites, 
-                        coords = c("lon", "lat"),
-                        crs = 4326)
-
-grid_match_3403<- st_intersects(reef_3403_pts,rvc_grid_84,sparse=T)
-reef_3403_pts$grid_match<- NA
-for(i in 1:nrow(reef_3403_pts)){
-  if(length(grid_match_3403[[i]])==1){
-    reef_3403_pts$grid_match[i]=grid_match_3403[[i]]  
-  }else{
-    reef_3403_pts$grid_match[i]=NA
-  }
-}
-reef_3403_pts$hab_class<- rvc_grid$habclass[reef_3403_pts$grid_match]
-
-grid_match_3403<- st_intersects(rvc_3403_pts,rvc_grid_84,sparse=T)
-rvc_3403_pts$grid_match<- NA
-for(i in 1:nrow(rvc_3403_pts)){
-  if(length(grid_match_3403[[i]])==1){
-    rvc_3403_pts$grid_match[i]=grid_match_3403[[i]]  
-  }else{
-    rvc_3403_pts$grid_match[i]=NA
-  }
-}
-rvc_3403_pts$hab_class<- rvc_grid$habclass[rvc_3403_pts$grid_match]
-
-#3404 regions
-reef_3404_pts<-st_as_sf(x = reef_3404_sites, 
-                        coords = c("lon", "lat"),
-                        crs = 4326)
-
-rvc_3404_pts<-st_as_sf(x = rvc_3404_sites, 
-                       coords = c("lon", "lat"),
-                       crs = 4326)
-
-grid_match_3404<- st_intersects(reef_3404_pts,rvc_grid_84,sparse=T)
-reef_3404_pts$grid_match<- NA
-for(i in 1:nrow(reef_3404_pts)){
-  if(length(grid_match_3404[[i]])==1){
-    reef_3404_pts$grid_match[i]=grid_match_3404[[i]]  
-  }else{
-    reef_3404_pts$grid_match[i]=NA
-  }
-}
-reef_3404_pts$hab_class<- rvc_grid$habclass[reef_3404_pts$grid_match]
-
-grid_match_3404<- st_intersects(rvc_3404_pts,rvc_grid_84,sparse=T)
-rvc_3404_pts$grid_match<- NA
-for(i in 1:nrow(rvc_3404_pts)){
-  if(length(grid_match_3404[[i]])==1){
-    rvc_3404_pts$grid_match[i]=grid_match_3404[[i]]  
-  }else{
-    rvc_3404_pts$grid_match[i]=NA
-  }
-}
-rvc_3404_pts$hab_class<- rvc_grid$habclass[rvc_3404_pts$grid_match]
-
-#3408 regions
-reef_3408_pts<-st_as_sf(x = reef_3408_sites, 
-                        coords = c("lon", "lat"),
-                        crs = 4326)
-
-rvc_3408_pts<-st_as_sf(x = rvc_3408_sites, 
-                       coords = c("lon", "lat"),
-                       crs = 4326)
-
-grid_match_3408<- st_intersects(reef_3408_pts,rvc_grid_84,sparse=T)
-reef_3408_pts$grid_match<- NA
-for(i in 1:nrow(reef_3408_pts)){
-  if(length(grid_match_3408[[i]])==1){
-    reef_3408_pts$grid_match[i]=grid_match_3408[[i]]  
-  }else{
-    reef_3408_pts$grid_match[i]=NA
-  }
-}
-reef_3408_pts$hab_class<- rvc_grid$habclass[reef_3408_pts$grid_match]
-
-grid_match_3408<- st_intersects(rvc_3408_pts,rvc_grid_84,sparse=T)
-rvc_3408_pts$grid_match<- NA
-for(i in 1:nrow(rvc_3408_pts)){
-  if(length(grid_match_3408[[i]])==1){
-    rvc_3408_pts$grid_match[i]=grid_match_3408[[i]]  
-  }else{
-    rvc_3408_pts$grid_match[i]=NA
-  }
-}
-rvc_3408_pts$hab_class<- rvc_grid$habclass[rvc_3408_pts$grid_match]
 
 #Only expert sightings
 R_exp<- filter(R, exp == 'E')
