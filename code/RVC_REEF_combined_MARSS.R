@@ -5,6 +5,9 @@ library(dplyr);library(magrittr);library(tidyverse); library(MARSS)
 library(stringr);library(lubridate)
 
 ####1. Functions ####
+#not in filter
+`%notin%` <- Negate(`%in%`)
+
 #Aggregate by SSU (15m, 15min diameter survey;some samples are broken down to multiple rows per SSU survey)
 ssu_density = function(x){
   x %>% dplyr::group_by(STATION_NR,PRIMARY_SAMPLE_UNIT,YEAR) %>%
@@ -42,7 +45,7 @@ psu_relative_abund = function(x) {
 #Create a yearly aggregate of density/total abundance and fill in missing years
 psu_density_year = function(x) {
   x %>% psu_density() %>% 
-    group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_tot_abund=mean(tot.abundance),mean_ssu_abundance=mean(mean.abundance),var.tot=var(tot.abundance),var.mean=var(mean.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
+    group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_ssu_abundance=mean(mean.abundance),var_abundance=var(mean.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
     complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
 }
 
@@ -58,14 +61,14 @@ psu_transform_year = function(x) {x %>% psu_relative_abund() %>%
     complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
 }
 
-rvc_batch = function(x){
+rvc_batch = function(x,GZ,geog){
   RVC_TS=list()
   for(i in 1:length(unique(x$SPECIES_CD))){
-    x1= x %>% subset(SPECIES_CD==unique(x$SPECIES_CD)[i]) %>% psu_density_year()
-    x2= x %>% subset(SPECIES_CD==unique(x$SPECIES_CD)[i]) %>% psu_relative_abund_year()
-    x3= x %>% subset(SPECIES_CD==unique(x$SPECIES_CD)[i]) %>% psu_transform_year()
     
-    x_full<- cbind(x1,x2,x3,Species=rep(unique(x$SPECIES_CD)[i],nrow(x1)))
+    x1= x %>% subset(region.id==GZ) %>% subset(LAT_LON %in% geog$lat_lon) #Trim down full dataset to those in the selected plots (eg. only spur and groove) 
+    x2= x1 %>% subset(SPECIES_CD==unique(x$SPECIES_CD)[i]) %>% psu_density_year() #For each species calculate annual densities in the SSUs
+    
+    x_full<- cbind(x1,x2,Species=rep(unique(x$SPECIES_CD)[i],nrow(x1)))
     RVC_TS[[i]]=x_full
   }
   return(RVC_TS)
@@ -131,27 +134,21 @@ stan_plot<-
 REEF<- read.csv("./REEF Tropical Western Atlantic/TWA.csv") #Reef sightings 
 REEF_survey<- read.csv("./REEF Tropical Western Atlantic/TWAsurveys.csv") #Survey metadata
 m<- match(REEF$formid,REEF_survey$formid) #match sightings to surveys
-REEF_fish[,14:30]<- REEF_survey[m,4:20] #merge survey level data
+REEF[,14:30]<- REEF_survey[m,4:20] #merge survey level data
 
-#Florida keys data
-fk_99_18<- read.csv("./RVC/Florida_Keys_RVC.csv") #RVC survey data from 1999 to 2018
-fk_79_98<- read.csv("./RVC/Florida_keys_pre_1999.txt") #RVC survey dating from 1979 to 1998
+R<- REEF %>% group_by(formid) %>% summarize(n=n(),sum.abundance=sum(abundance)) 
+R_filter<- subset(R,n==sum.abundance) #Some surveys have all 1s for every species - may be recording occurrence only, removing these
 
+#Remove these surveys
+R <- subset(REEF, formid %notin% R_filter$formid)
 
-fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9, these represent 0s
+# Get rid of  rows of data with no date reported
+R<-R[-which(R$date=="0000-00-00"),]
 
-t<- fk_79_98 %>% group_by(station_nr,psu,YEAR,spcode) %>%  #For each SSU and species
-  summarise(NUM=n(),sum=sum(len),id=ID[1]) %>% arrange(psu,YEAR,station_nr,spcode) #Summarize the number of individual entries (non-zero lengths indicate sightings)
-t$NUM<- ifelse(t$sum==0,0,t$NUM) #NUM also counts zeros, now only presences
-
-#Put back NUM into original data-frame, now each row represents a SSU survey
-m<- match(fk_79_98$ID,t$id) #match back the sums to the survey id 
-fk_79_98$NUM<- t$NUM[m] #Create the number column in this survey set
-fk_79_98<- fk_79_98[complete.cases(fk_79_98$NUM),] #Reduce down to the summed count only
-#Synonymize column names
-colnames(fk_79_98)<- c(colnames(fk_99_18)[1],colnames(fk_99_18)[3:5],colnames(fk_99_18)[2],colnames(fk_99_18)[6],colnames(fk_99_18)[7:18],colnames(fk_99_18)[20],colnames(fk_99_18)[19]) 
-#Join together datasets
-fk_79_18<- full_join(fk_99_18,fk_79_98)
+# let's get the year & month from the Date field (requires lubridate)
+R$date<-ymd(R$date)#put into proper date format
+R<-cbind(R,year=year(R$date))
+R<-cbind(R,month=month(R$date))
 
 ###REEF geog
 library(sp)
@@ -172,11 +169,44 @@ reef_geog<-reef_geog[complete.cases(reef_geog),] #Discard sites with no coordina
 reef_geog$lat_dd<- reef_geog$lat_deg+reef_geog$lat_min/60
 reef_geog$lon_dd<- reef_geog$lon_deg+reef_geog$lon_min/60
 
+# Thin  raw data to exclude dives shorter than 20min, longer than 120min
+R<-R[R$btime>20,]
+R<-R[R$btime<120,]
+
+# Thin the data to remove night dives (start before 5am or after 8pm)
+R<-R[R$start>5,]
+R<-R[R$start<20,]
+
+# Remove sites without lat-long (b/c those sites are probably janky anyway)
+R<-filter(R, R$geogr %in% reef_geog$geogid)
+
+
+####Florida keys RVC data
+fk_99_18<- read.csv("./RVC/Florida_Keys_RVC.csv") #RVC survey data from 1999 to 2018
+fk_79_98<- read.csv("./RVC/Florida_keys_pre_1999.txt") #RVC survey dating from 1979 to 1998
+
+
+fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9, these represent 0s
+
+t<- fk_79_98 %>% group_by(station_nr,psu,YEAR,spcode) %>%  #For each SSU and species
+  summarise(NUM=n(),sum=sum(len),id=ID[1]) %>% arrange(psu,YEAR,station_nr,spcode) #Summarize the number of individual entries (non-zero lengths indicate sightings)
+t$NUM<- ifelse(t$sum==0,0,t$NUM) #NUM also counts zeros, now only presences
+
+#Put back NUM into original data-frame, now each row represents a SSU survey
+m<- match(fk_79_98$ID,t$id) #match back the sums to the survey id 
+fk_79_98$NUM<- t$NUM[m] #Create the number column in this survey set
+fk_79_98<- fk_79_98[complete.cases(fk_79_98$NUM),] #Reduce down to the summed count only
+#Synonymize column names
+colnames(fk_79_98)<- c(colnames(fk_99_18)[1],colnames(fk_99_18)[3:5],colnames(fk_99_18)[2],colnames(fk_99_18)[6],colnames(fk_99_18)[7:18],colnames(fk_99_18)[20],colnames(fk_99_18)[19]) 
+#Join together datasets
+fk_79_18<- full_join(fk_99_18,fk_79_98)
+
+
+
 #Extract out florida key subregions for select zones
 reef_3403_sites<- subset(reef_geog,region.id=='3403')
 reef_3404_sites<- subset(reef_geog,region.id=='3404')
 reef_3408_sites<- subset(reef_geog,region.id=='3408')
-
 
 #RVC sites
 fk_79_18$LAT_LON<- paste(fk_79_18$LAT_DEGREES,fk_79_18$LON_DEGREES,sep='_') #Find unique geographic position
@@ -197,10 +227,9 @@ fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to matc
 
 #### 3. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
-fish_dat<- read.csv("Fish_traits.csv")
+fish_dat<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
+fish_dat<- subset(fish_dat,expert_sighting_freq>1) #Take out the very rare species
 fish_fam<- read.csv('./Tropical Western Atlantic/TWAfamily.csv')
-m<- match(fish_dat$familyid,as.numeric(fish_fam$familyid))
-fish_dat$Family<- fish_fam$scientificname[m]
 fish_rvc<- read.csv("Florida_keys_taxonomic_data.csv")
 fish_rvc<- subset(fish_rvc,gsub('.*\\ ', '', fish_rvc$SCINAME)!='sp.') #remove unknown species
 m<- match(fish_rvc$SCINAME,fish_dat$sciname2)
@@ -216,15 +245,13 @@ m<- match(fk_93_18$SPECIES_CD,filter_rvc$SPECIES_CD)
 fk_93_18_sp<- subset(fk_93_18,is.na(m)==F)
 
 #Separate out RVC data into the REEF sub-regions
-rvc_3302<- subset(fk_93_18_sp,region.id=='3302')
 rvc_3403<- subset(fk_93_18_sp,region.id=='3403')
 rvc_3404<- subset(fk_93_18_sp,region.id=='3404')
-rvc_3405<- subset(fk_93_18_sp,region.id=='3405')
 rvc_3408<- subset(fk_93_18_sp,region.id=='3408')
 
 #
 rvc_trends_3302<- rvc_batch(rvc_3302)
-rvc_trends_3403<- rvc_batch(rvc_3403)
+rvc_trends_3403<- rvc_batch(fk_93_18,GZ='3403',geog=)
 rvc_trends_3404<- rvc_batch(rvc_3404)
 rvc_trends_3405<- rvc_batch(rvc_3405)
 rvc_trends_3408<- rvc_batch(rvc_3408)
