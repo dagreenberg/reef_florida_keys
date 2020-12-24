@@ -260,15 +260,19 @@ for(i in 1:nrow(rvc_pts)){
 }
 rvc_pts$hab_class<- rvc_grid$habclass[rvc_pts$grid_match]
 
+reef_sites<- R %>% group_by(geogr) %>% summarize(n=n_distinct(formid)) #Number of surveys per site
+reef_sites_filter<- subset(reef_sites,n>5) #only keep sites surveyed at least 5 times
+R<- subset(R, geogr %in% reef_sites_filter$geogr)
+
 #### 3. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
-fish_dat<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
-fish_dat<- subset(fish_dat,expert_sighting_freq>1) #Take out the very rare species
-fish_fam<- read.csv('./Tropical Western Atlantic/TWAfamily.csv')
+fish_reef<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
+fish_reef<- subset(fish_dat,expert_sighting_freq>1) #Take out the very rare species
 fish_rvc<- read.csv("Florida_keys_taxonomic_data.csv")
 fish_rvc<- subset(fish_rvc,gsub('.*\\ ', '', fish_rvc$SCINAME)!='sp.') #remove unknown species
-m<- match(fish_rvc$SCINAME,fish_dat$sciname2)
-miss<- subset(fish_rvc,is.na(m)==T) #8 species that did not match
+fish_rvc<- subset(fish_rvc, SCINAME %in% fish_reef$sciname2)
+m<- match(fish_reef$sciname2,fish_rvc$SCINAME)
+fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
 #Filter down the species in RVC
 filter_rvc<- subset(fish_rvc,is.na(m)==F)
@@ -296,18 +300,8 @@ R_3404<- subset(R, geogr4==3404)
 R_3408<- subset(R, geogr4==3408)
 
 
-reef_3403_sites<- R %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
-write.csv(reef_3403_sites,'3403_reef_SITES.csv')
-reef_3404_sites<- R_3404 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
-write.csv(reef_3404_sites,'3404_reef_SITES.csv')
-reef_3408_sites<- R_3408 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),lat=unique(lat.dd),lon=unique(lon.dd))
-write.csv(reef_3408_sites,'3408_reef_SITES.csv')
-
-
 
 #Only expert sightings
-R_exp<- filter(R, exp == 'E')
-
 spp=fish_reef$scientificname
 
 
