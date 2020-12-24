@@ -20,8 +20,8 @@ ssu_density = function(x){
 #Calculates number of SSUs, the total counts across the PSU, average count per SSU, and occupancy at the PSU level
 psu_density = function(x) {
   ssu_density(x) %>% dplyr::group_by(PRIMARY_SAMPLE_UNIT,YEAR) %>%
-    summarise(m=length(STATION_NR),var=var(density),tot.abundance=sum(density),mean.abundance=mean(density),occ=NA) %>% 
-    mutate(occ=ifelse(tot.abundance>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR)
+    summarise(m=length(STATION_NR),ssu.var=var(density),mean.ssu.abundance=mean(density),occ=NA) %>% 
+    mutate(occ=ifelse(mean.ssu.abundance>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR)
 }
 
 #Transform PSU data to relative abundance and back-transform to the min. threshold
@@ -45,30 +45,43 @@ psu_relative_abund = function(x) {
 #Create a yearly aggregate of density/total abundance and fill in missing years
 psu_density_year = function(x) {
   x %>% psu_density() %>% 
-    group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_ssu_abundance=mean(mean.abundance),var_abundance=var(mean.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
+    group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_ssu_abundance=mean(mean.ssu.abundance),var_abundance=var(mean.ssu.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
+    complete(YEAR=seq(min(na.omit(x$YEAR)),max(na.omit(x$YEAR)),by=1))
 }
 
 #Create a yearly aggregate of relative abundance counts and fill in missing years
 psu_relative_abund_year = function(x) {x %>% psu_relative_abund() %>%
     group_by(YEAR,RA) %>%  summarise(n=n()) %>% spread(key=RA, n, fill = 0, sep = ".") %>% as.data.frame() %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
+    complete(YEAR=seq(min(x$YEAR),max(x$YEAR),by=1))
 }
 
 #Create a yearly aggregate of relative and transformed abundance and fill in missing years
 psu_transform_year = function(x) {x %>% psu_relative_abund() %>%
     group_by(YEAR) %>% summarise(mean.RA.cat=mean(RA),mean.abund.trans=mean(abund_trans),var.abund.trans=var(abund_trans)) %>%
-    complete(YEAR=seq(min(x$YEAR),seq(max(x$YEAR),by=1)))
+    complete(YEAR=seq(min(x$YEAR),max(x$YEAR),by=1))
 }
 
-rvc_batch = function(x,GZ,geog){
+rvc_batch = function(x,GZ,sp,geog){
+  x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
+  x1= x %>% subset(region.id==GZ) %>% subset(LAT_LON %in% geog$lat_lon) #Trim down full dataset to those in the selected plots (eg. only spur and groove) 
+  x1= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0)) #This makes sure the zeros in each sample unit are recorded for each species
+  
   RVC_TS=list()
-  for(i in 1:length(unique(x$SPECIES_CD))){
+  for(i in 1:nrow(sp)){
+    x2= x1 %>% subset(SPECIES_CD==sp$rvc_code[i]) %>% psu_density_year() #For each species calculate annual densities in the SSUs
     
-    x1= x %>% subset(region.id==GZ) %>% subset(LAT_LON %in% geog$lat_lon) #Trim down full dataset to those in the selected plots (eg. only spur and groove) 
-    x2= x1 %>% subset(SPECIES_CD==unique(x$SPECIES_CD)[i]) %>% psu_density_year() #For each species calculate annual densities in the SSUs
-    
-    x_full<- cbind(x1,x2,Species=rep(unique(x$SPECIES_CD)[i],nrow(x1)))
+    for(z in 1:nrow(x2)){ #Filter out years that lack enough data
+      if(is.na(x2$nm[z])==T){next}
+      if(x2$nm[z]<20){ #less than 20 sample units into NAs
+        x2[z,4:7]<- NA 
+      }
+      if(is.na(x2$mean_ssu_abundance[z])==T){next}
+      if(x2$mean_ssu_abundance[z]==0){ #zeros turned into NAs
+        x2[z,4:7]<- NA 
+      }
+     
+    }
+    x_full<- cbind(x2,Species=rep(unique(sp$commonname)[i],nrow(x2)))
     RVC_TS[[i]]=x_full
   }
   return(RVC_TS)
@@ -224,7 +237,7 @@ fk_79_18[,25:28]<- rvc_sites[match(fk_79_18$LAT_LON,rvc_sites$lat_lon),4:7]
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
 ####3. Geographic filtering ####
-#### Intersect REEF & RVC spatial data ####
+### Intersect REEF & RVC spatial data ###
 library(sf)
 rvc_grid<-st_read(dsn='RVC Grid', layer='FlaKeys_Grid') #Read in Florida Keys sampling grid
 rvc_grid_84<- st_transform(rvc_grid,4326) #Set to WGS84
@@ -250,21 +263,21 @@ for(i in 1:nrow(reef_pts)){
 reef_pts$hab_class<- rvc_grid$habclass[reef_pts$grid_match]
 
 grid_match_rvc<- st_intersects(rvc_pts,rvc_grid_84,sparse=T)
-rvc_pts$grid_match<- NA
-for(i in 1:nrow(rvc_pts)){
+rvc_sites$grid_match<- NA
+for(i in 1:nrow(rvc_sites)){
   if(length(grid_match_rvc[[i]])==1){
-    rvc_pts$grid_match[i]=grid_match_rvc[[i]]  
+    rvc_sites$grid_match[i]=grid_match_rvc[[i]]  
   }else{
-    rvc_pts$grid_match[i]=NA
+    rvc_sites$grid_match[i]=NA
   }
 }
-rvc_pts$hab_class<- rvc_grid$habclass[rvc_pts$grid_match]
+rvc_sites$hab_class<- rvc_grid$habclass[rvc_sites$grid_match]
 
 reef_sites<- R %>% group_by(geogr) %>% summarize(n=n_distinct(formid)) #Number of surveys per site
 reef_sites_filter<- subset(reef_sites,n>5) #only keep sites surveyed at least 5 times
 R<- subset(R, geogr %in% reef_sites_filter$geogr)
 
-#### 3. Creating RVC time-series ####
+#### 4. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
 fish_reef<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
 fish_reef<- subset(fish_dat,expert_sighting_freq>1) #Take out the very rare species
@@ -274,23 +287,22 @@ fish_rvc<- subset(fish_rvc, SCINAME %in% fish_reef$sciname2)
 m<- match(fish_reef$sciname2,fish_rvc$SCINAME)
 fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
-#Filter down the species in RVC
-filter_rvc<- subset(fish_rvc,is.na(m)==F)
-filter_rvc<- subset(filter_rvc,EXP_SIGHTING>1)
-
-#Filter the RVC dataset to these species
-m<- match(fk_93_18$SPECIES_CD,filter_rvc$SPECIES_CD)
-fk_93_18_sp<- subset(fk_93_18,is.na(m)==F)
-
 #Separate out RVC data into the REEF sub-regions
-rvc_3403_geog<- subset(fk_93_18_sp,region.id=='3403')
-rvc_3404<- subset(fk_93_18_sp,region.id=='3404')
-rvc_3408<- subset(fk_93_18_sp,region.id=='3408')
+rvc_3403_geog<- subset(rvc_sites,region.id=='3403') #Sites in the Key Largo sub-region
+write.csv(rvc_3403_geog,'rvc_sites_3403.csv')
+rvc_3403_geog_SG<- subset(rvc_3403_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
+
+rvc_3404_geog<- subset(rvc_sites,region.id=='3404') #Sites in the Islamorada sub-region
+write.csv(rvc_3404_geog,'rvc_sites_3404.csv')
+rvc_3404_geog_SG<- subset(rvc_3404_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
+
+rvc_3408_geog<- subset(rvc_sites,region.id=='3408') #Sites in the Key West sub-region
+write.csv(rvc_3408_geog,'rvc_sites_3408.csv')
+rvc_3408_geog_SG<- subset(rvc_3408_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
 #
-rvc_trends_3302<- rvc_batch(rvc_3302)
-rvc_trends_3403<- rvc_batch(fk_93_18,GZ='3403',geog=)
-rvc_trends_3404<- rvc_batch(rvc_3404)
+rvc_trends_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,geog=rvc_3403_geog_SG)
+
 rvc_trends_3405<- rvc_batch(rvc_3405)
 rvc_trends_3408<- rvc_batch(rvc_3408)
 
