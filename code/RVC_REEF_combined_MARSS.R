@@ -300,22 +300,18 @@ rvc_3408_geog<- subset(rvc_sites,region.id=='3408') #Sites in the Key West sub-r
 write.csv(rvc_3408_geog,'rvc_sites_3408.csv')
 rvc_3408_geog_SG<- subset(rvc_3408_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
-#
+#Determine abundance trends for selected species in spur & groove surveys from each sub-region
 rvc_trends_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,geog=rvc_3403_geog_SG)
+rvc_3403_green<- rlist::list.filter(rvc_trends_3403,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
 
-rvc_trends_3405<- rvc_batch(rvc_3405)
-rvc_trends_3408<- rvc_batch(rvc_3408)
+rvc_trends_3404<- rvc_batch(fk_93_18,GZ='3404',sp=fish_reef,geog=rvc_3404_geog_SG)
+rvc_3404_green<- rlist::list.filter(rvc_trends_3404,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
 
-
-
-R_3404<- subset(R, geogr4==3404)
-R_3408<- subset(R, geogr4==3408)
-
+rvc_trends_3408<- rvc_batch(fk_93_18,GZ='3408',sp=fish_reef,geog=rvc_3408_geog_SG)
+rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
 
 
-#Only expert sightings
-spp=fish_reef$scientificname
-
+####5. Creating REEF time-series
 
 #
 reef_geog_3403<- reef_3403_pts %>% subset(is.na(grid_match)==F& hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR') %>% subset(n >= 5)
