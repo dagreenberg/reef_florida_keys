@@ -312,7 +312,7 @@ rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abun
 
 
 ####5. Creating REEF time-series
-
+#
 #
 reef_geog_3403<- reef_3403_pts %>% subset(is.na(grid_match)==F& hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR') %>% subset(n >= 5)
 reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
