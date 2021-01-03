@@ -7,6 +7,10 @@ library(stringr);library(lubridate)
 ####1. Functions ####
 #not in filter
 `%notin%` <- Negate(`%in%`)
+#geometric mean
+gm_mean<- function(x){
+  prod(x)^(1/length(x))
+}
 
 #Aggregate by SSU (15m, 15min diameter survey;some samples are broken down to multiple rows per SSU survey)
 ssu_density = function(x){
@@ -95,41 +99,57 @@ REEF_pull <- function(R,GZ,sp,geog){
   # geog are the dive sites (lat/lons) you want to include for the time-series
   Time_series<- list()
   #pull only those data (rows) from the geozone given to function
-  for(i in 1:length(sp)){
-    TempDat<-R[which(substring(R$site,1,nchar(GZ))==GZ),] #Subset to sub-region
-    Temp_sp<- subset(TempDat,sciName==sp[i]) #Extract out all occurrences of species
-    if(nrow(Temp_sp)<5){next}
-    sites<- unique(Temp_sp$site) #Find all sites where that species has been found
-    TempDat_sites<- subset(TempDat,is.na(match(TempDat$site,sites))==F) #Include all surveys at these sites
+  TempDat<-R %>% subset(site4==GZ) %>% subset(site %in% geog$geogid) %>% select('formid','speciesid','abundance',everything())
+  Zeros<- complete(TempDat,formid,nesting(speciesid),
+                   fill=list(abundance=0)) %>%
+    anti_join(TempDat) %>% 
+    select('formid','speciesid','abundance',everything())
+  
+  m<- match(Zeros$formid,TempDat$formid) #Match the zero data frame to the rest of the data
+  Zeros[,4:ncol(Zeros)]<- TempDat[m,4:ncol(TempDat)] #Replicate the survey-level data (except abundance)
+  TempDat2<- rbind(TempDat,Zeros) %>% arrange(formid,speciesid) #Combine presence and absence data for all species
+  TempDat2$abund_trans <-NA #Transform abundance categories into the minimum counts
+  TempDat2<- TempDat2%>%
+    mutate(
+      abund_trans=ifelse(abundance==0,0,abund_trans),
+      abund_trans=ifelse(abundance==1,1,abund_trans),
+      abund_trans=ifelse(abundance==2,2,abund_trans),
+      abund_trans=ifelse(abundance==3,11,abund_trans),
+      abund_trans=ifelse(abundance==4,101,abund_trans)
+    )
+  
+  for(i in 1:nrow(sp)){
+    Temp_sp<- subset(TempDat2,speciesid==sp$speciesid[i] & abundance>0) #Extract out all occurrences of species
+    if(nrow(Temp_sp)==0){next} 
+    TempDat_sites<- subset(TempDat2, site %in% Temp_sp$site & speciesid==sp$speciesid[i]) #Now include all surveys at these sites
     
-    Survs<- as.data.frame(TempDat_sites %>%
-                            group_by(year)%>% 
-                            summarize(n_distinct(formid)))
-    Temp_sp$abund_trans <-NA
+    Occs<- as.data.frame(Temp_sp %>% #Summarize for all surveys where the target species was found
+                              group_by(site,year) %>%
+                               group_by(site,year)%>% 
+                               summarize(mean_abund=mean(abund_trans),n=n_distinct(formid))  %>%
+                              group_by(year) %>%
+                              summarize(mean_site_abund.occ=mean(mean_abund),n.sites.occ=n_distinct(site),n.survs.occ=sum(n)))
+                  
+  
+    Survs<- as.data.frame(TempDat_sites %>% #Summarize for all surveys
+                            group_by(site,year)%>% 
+                            summarize(mean_abund=mean(abund_trans),n=n_distinct(formid)) %>% 
+                            group_by(year) %>%
+                            summarize(mean_site_abund=mean(mean_abund),sd_site_abund=sd(mean_abund),n.sites=n_distinct(site),n.survs=sum(n)))
     
-    # summarize the number of unique surveys by year and month in within the given Geozone
-    Temp_sp <- Temp_sp%>%
-      mutate(
-        abund_trans=ifelse(abundance==0,0,abund_trans),
-        abund_trans=ifelse(abundance==1,1,abund_trans),
-        abund_trans=ifelse(abundance==2,2,abund_trans),
-        abund_trans=ifelse(abundance==3,11,abund_trans),
-        abund_trans=ifelse(abundance==4,101,abund_trans)
-      )
-    AS <-as.data.frame(Temp_sp %>%
-                         group_by(year) %>%          # Grouping by species
-                         summarize(SumAbund=sum(abund_trans),sdAbund=sd(abund_trans), n=n()))
-    TS<- data.frame(year=Survs$year,tot.surveys=Survs$`n_distinct(formid)`)
-    TS<- full_join(TS,AS,by='year')
-    TS[is.na(TS)] <- 0 #Turn NAs (when species was not found) into true zeros
-    TS$meanAbund<- TS$SumAbund/TS$tot.surveys
-    TS$logAbund<- log(TS$meanAbund)
-    if(any(is.infinite(TS$logAbund))==T){ #For zeros, add a correction to log it
-      TS$logAbund<- log(TS$meanAbund+min(TS$meanAbund[TS$meanAbund>0])/2)
+    TS<- full_join(Survs,Occs,by='year')
+    TS$comName<- rep(sp$commonname[i],nrow(TS))
+    for(z in 1:nrow(TS)){
+      if(TS$n.survs[z]<20){ #Make years with less than 20 surveys NAs
+        TS$mean_site_abund[z]=NA
+      }
+      if(TS$n.sites[z]<5){ #Make years with less than 5 sites surveyed into NAs
+        TS$mean_site_abund[z]=NA
+      }
+      if(TS$mean_site_abund[z]==0){ #turn zeros into NAs
+        TS$mean_site_abund[z]=NA
+      }
     }
-    TS$logSd<- log(1+TS$sdAbund^2/TS$meanAbund^2) #sd on log-scale (Quan & Zhang 2003)
-    TS$logSE<- TS$logSd/sqrt(TS$tot.surveys)
-    TS$comName<- rep(sp[i],nrow(TS))
     
     Time_series[[i]]<- TS
   }
@@ -139,7 +159,7 @@ REEF_pull <- function(R,GZ,sp,geog){
   return(Time_series)
 } #end function
 
-stan_plot<- 
+#Plot function
 
 
 #####2. Data Loading and site matching####
@@ -252,15 +272,15 @@ rvc_pts<-st_as_sf(x = rvc_sites,
                        crs = 4326)
 
 grid_match<- st_intersects(reef_pts,rvc_grid_84,sparse=T)
-reef_pts$grid_match<- NA
+reef_geog$grid_match<- NA
 for(i in 1:nrow(reef_pts)){
   if(length(grid_match[[i]])==1){
-    reef_pts$grid_match[i]=grid_match[[i]]  
+    reef_geog$grid_match[i]=grid_match[[i]]  
   }else{
-    reef_pts$grid_match[i]=NA
+    reef_geog$grid_match[i]=NA
   }
 }
-reef_pts$hab_class<- rvc_grid$habclass[reef_pts$grid_match]
+reef_geog$hab_class<- rvc_grid$habclass[reef_pts$grid_match]
 
 grid_match_rvc<- st_intersects(rvc_pts,rvc_grid_84,sparse=T)
 rvc_sites$grid_match<- NA
