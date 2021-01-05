@@ -2,42 +2,48 @@ library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
-mod_1<-"data {
-  int<lower=0> TT;
+mod_1<-"data{
+  int<lower=0> TT; //Timespan
+  int<lower=0> N; // num of ts; rows of y
   int<lower=0> n_pos; // number of non-NA values
-  int<lower=0> indx_pos[n_pos]; // index of the non-NA values
+  int<lower=0> indx_pos[n_pos]; // index of the non-NA value
+  int<lower=0> id; //id for the scaling parameter (a)
   vector[n_pos] y;
 }
-parameters {
+parameters{
   real x0;
-  real u;
+  real a;
   vector[TT] pro_dev;
   real<lower=0> sd_q;
-  real<lower=0> sd_r;
+  real<lower=0> sd_r[N];
 }
-transformed parameters {
+transformed parameters{
   vector[TT] x;
-  x[1] = x0 + u + pro_dev[1];
+  x[1] = x0 + a*id + pro_dev[1];
   for(i in 2:TT) {
-    x[i] = x[i-1] + u + pro_dev[i];
+    x[i] = x[i-1] + a*id + pro_dev[i];
   }
 }
-model {
+model{
   x0 ~ normal(y[1],10);
-  u ~ normal(0,2);
+  a ~ normal(0,10);
   sd_q ~ cauchy(0,5);
   sd_r ~ cauchy(0,5);
   pro_dev ~ normal(0, sd_q);
+  
   for(i in 1:n_pos){
     y[i] ~ normal(x[indx_pos[i]], sd_r);
   }
 }
-generated quantities {
+generated quantities{
   vector[n_pos] log_lik;
   for (i in 1:n_pos) log_lik[i] = normal_lpdf(y[i] | x[indx_pos[i]], sd_r);
 }
 "
 
+
+##
+mod<- 
 "data {
   int<lower=0> TT; // length of ts
   int<lower=0> N; // num of ts; rows of y
@@ -174,14 +180,13 @@ generated quantities {
 }
 "
 
-
-
-
 ypos <- Y[!is.na(Y)]
 n_pos <- length(ypos)  #number on non-NA ys
 indx_pos <- which(!is.na(Y), arr.ind = TRUE)  #index on the non-NAs
 col_indx_pos <- as.vector(indx_pos[, "col"])
 row_indx_pos <- as.vector(indx_pos[, "row"])
+
+
 test_1 <- rstan::stan(model_code = mod_1, data = list(y = ypos, 
                                                    TT = ncol(Y), N = nrow(Y), n_pos = n_pos, col_indx_pos = col_indx_pos, 
                                                    row_indx_pos = row_indx_pos), pars = c("sd_q", "x", "sd_r", 

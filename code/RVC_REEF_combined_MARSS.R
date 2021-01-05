@@ -2,7 +2,7 @@
 rm(list=ls())
 setwd("C:/Users/14388/Desktop/reef_florida_keys_data")
 library(dplyr);library(magrittr);library(tidyverse); library(MARSS)
-library(stringr);library(lubridate)
+library(stringr);library(lubridate);library(rlist)
 
 ####1. Functions ####
 #not in filter
@@ -81,7 +81,7 @@ rvc_batch = function(x,GZ,sp,geog){
       }
       if(is.na(x2$mean_ssu_abundance[z])==T){next}
       if(x2$mean_ssu_abundance[z]==0){ #zeros turned into NAs
-        x2[z,4:7]<- NA 
+        x2[z,4:5]<- NA 
       }
      
     }
@@ -102,8 +102,7 @@ REEF_pull <- function(R,GZ,sp,geog){
   TempDat<-R %>% subset(site4==GZ) %>% subset(site %in% geog$geogid) %>% select('formid','speciesid','abundance',everything())
   Zeros<- complete(TempDat,formid,nesting(speciesid),
                    fill=list(abundance=0)) %>%
-    anti_join(TempDat) %>% 
-    select('formid','speciesid','abundance',everything())
+    anti_join(TempDat) 
   
   m<- match(Zeros$formid,TempDat$formid) #Match the zero data frame to the rest of the data
   Zeros[,4:ncol(Zeros)]<- TempDat[m,4:ncol(TempDat)] #Replicate the survey-level data (except abundance)
@@ -140,15 +139,18 @@ REEF_pull <- function(R,GZ,sp,geog){
     TS<- full_join(Survs,Occs,by='year')
     TS$comName<- rep(sp$commonname[i],nrow(TS))
     for(z in 1:nrow(TS)){
+      if(is.na(TS$mean_site_abund[z])==T){next}
+      
+      if(TS$mean_site_abund[z]==0){ #turn zeros into NAs
+        TS$mean_site_abund[z]=NA
+      }
       if(TS$n.survs[z]<20){ #Make years with less than 20 surveys NAs
         TS$mean_site_abund[z]=NA
       }
       if(TS$n.sites[z]<5){ #Make years with less than 5 sites surveyed into NAs
         TS$mean_site_abund[z]=NA
       }
-      if(TS$mean_site_abund[z]==0){ #turn zeros into NAs
-        TS$mean_site_abund[z]=NA
-      }
+     
     }
     
     Time_series[[i]]<- TS
@@ -169,23 +171,12 @@ REEF_survey<- read.csv("./REEF Tropical Western Atlantic/TWAsurveys.csv") #Surve
 m<- match(REEF$formid,REEF_survey$formid) #match sightings to surveys
 REEF[,14:30]<- REEF_survey[m,4:20] #merge survey level data
 
-R<- REEF %>% group_by(formid) %>% summarize(n=n(),sum.abundance=sum(abundance)) 
-R_filter<- subset(R,n==sum.abundance) #Some surveys have all 1s for every species - may be recording occurrence only, removing these
-
-#Remove these surveys
-R<- subset(REEF, formid %notin% R_filter$formid)
-
-# Get rid of  rows of data with no date reported
-R<-R[-which(R$date=="0000-00-00"),]
-
-# let's get the year & month from the Date field (requires lubridate)
-R$date<-ymd(R$date)#put into proper date format
-R<-cbind(R,year=year(R$date))
-R<-cbind(R,month=month(R$date))
-
 ###REEF geog
 library(sp)
 reef_geog<- read.csv("./REEF Tropical Western Atlantic/TWAgeog.csv")
+site_surveys<-REEF %>% group_by(geogr) %>% summarize(n=n_distinct(formid))
+m<- match(reef_geog$geogid,site_surveys$geogr)
+reef_geog$no.surveys<- site_surveys$n[m]
 reef_geog$region.id<- substr(reef_geog$geogid, 1,4) #Get the region id (first four digits)
 reef_geog$lat_full<- reef_geog$lat #Copy of the full latitude
 reef_geog$lon_full<- reef_geog$lon #Copy of the full longitude
@@ -201,6 +192,17 @@ reef_geog<-reef_geog[complete.cases(reef_geog),] #Discard sites with no coordina
 #Convert to decimal degrees (matches RVC lat/lons)
 reef_geog$lat_dd<- reef_geog$lat_deg+reef_geog$lat_min/60
 reef_geog$lon_dd<- reef_geog$lon_deg-reef_geog$lon_min/60
+
+#Remove these surveys
+R<- subset(REEF, type==1) #Remove species-only surveys
+
+# Get rid of  rows of data with no date reported
+R<-R[-which(R$date=="0000-00-00"),]
+
+# let's get the year & month from the Date field (requires lubridate)
+R$date<-ymd(R$date)#put into proper date format
+R<-cbind(R,year=year(R$date))
+R<-cbind(R,month=month(R$date))
 
 # Remove sites without lat-long (b/c those sites are probably janky anyway)
 R<-filter(R, R$geogr %in% reef_geog$geogid)
@@ -280,7 +282,7 @@ for(i in 1:nrow(reef_pts)){
     reef_geog$grid_match[i]=NA
   }
 }
-reef_geog$hab_class<- rvc_grid$habclass[reef_pts$grid_match]
+reef_geog$hab_class<- as.factor(rvc_grid$habclass[reef_geog$grid_match])
 
 grid_match_rvc<- st_intersects(rvc_pts,rvc_grid_84,sparse=T)
 rvc_sites$grid_match<- NA
@@ -291,16 +293,12 @@ for(i in 1:nrow(rvc_sites)){
     rvc_sites$grid_match[i]=NA
   }
 }
-rvc_sites$hab_class<- rvc_grid$habclass[rvc_sites$grid_match]
-
-reef_sites<- R %>% group_by(geogr) %>% summarize(n=n_distinct(formid)) #Number of surveys per site
-reef_sites_filter<- subset(reef_sites,n>5) #only keep sites surveyed at least 5 times
-R<- subset(R, geogr %in% reef_sites_filter$geogr)
+rvc_sites$hab_class<- as.factor(rvc_grid$habclass[rvc_sites$grid_match])
 
 #### 4. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
 fish_reef<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
-fish_reef<- subset(fish_dat,expert_sighting_freq>1) #Take out the very rare species
+fish_reef<- subset(fish_reef,expert_sighting_freq>1) #Take out the very rare species
 fish_rvc<- read.csv("Florida_keys_taxonomic_data.csv")
 fish_rvc<- subset(fish_rvc,gsub('.*\\ ', '', fish_rvc$SCINAME)!='sp.') #remove unknown species
 fish_rvc<- subset(fish_rvc, SCINAME %in% fish_reef$sciname2)
@@ -321,8 +319,8 @@ write.csv(rvc_3408_geog,'rvc_sites_3408.csv')
 rvc_3408_geog_SG<- subset(rvc_3408_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
 #Determine abundance trends for selected species in spur & groove surveys from each sub-region
-rvc_trends_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,geog=rvc_3403_geog_SG)
-rvc_3403_green<- rlist::list.filter(rvc_trends_3403,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
+rvc_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,geog=rvc_3403_geog_SG)
+rvc_3403_green<- rlist::list.filter(rvc_3403,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
 
 rvc_trends_3404<- rvc_batch(fk_93_18,GZ='3404',sp=fish_reef,geog=rvc_3404_geog_SG)
 rvc_3404_green<- rlist::list.filter(rvc_trends_3404,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
@@ -332,26 +330,23 @@ rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abun
 
 
 ####5. Creating REEF time-series
-#
-#
-reef_geog_3403<- reef_3403_pts %>% subset(is.na(grid_match)==F& hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR') %>% subset(n >= 5)
+
+reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403 & hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR')
 reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
 reef_geog_3408<- subset(reef_3408_pts,is.na(grid_match)==F& n>=5)
 
 ####Reef & RVC trends####
-REEF_3403<- REEF_pull(R,GZ='3403',sp=spp[1],geog=reef_geog_3403)
-REEF_3403_exp<- REEF_pull(R_exp,GZ='3403',sp=spp,geog=reef_geog_3403)
+REEF_3403<- REEF_pull(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
+#REEF_3403_exp<- REEF_pull(R_exp,GZ='3403',sp=spp,geog=reef_geog_3403)
 
 REEF_3404<- REEF_pull(R,GZ='3404',sp=spp)
 REEF_3404_exp<- REEF_pull(R_exp,GZ='3404',sp=spp)
-#REEF_3405<- REEF_pull(R,GZ='3405',sp=spp)
-#REEF_3406<- REEF_pull(R,GZ='3406',sp=spp)
+
 REEF_3408<- REEF_pull(R,GZ='3408',sp=spp)
 REEF_3408_exp<- REEF_pull(R_exp,GZ='3408',sp=spp)
 
 #Filter out low data (At least 20 years of sighting data)
-#REEF_3302_trim<- list.filter(REEF_3302,min(tot.surveys)>=10) #Basically all of 3302
-REEF_3403_green<- list.filter(REEF_3403,length(na.omit(meanAbund))>=18) #Green list - 175 species
+REEF_3403_green<- list.filter(REEF_3403,length(na.omit(mean_site_abund[1:26]))>=18) #Green list - 170 species
 REEF_3403_exp_green<- list.filter(REEF_3403_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
 
 REEF_3404_green<- list.filter(REEF_3404,length(na.omit(meanAbund))>=18)#151 left
@@ -362,32 +357,8 @@ REEF_3404_exp_green<- list.filter(REEF_3404_exp,length(na.omit(meanAbund))>=18) 
 REEF_3408_green<- list.filter(REEF_3408,length(na.omit(meanAbund))>=18)# 108 left
 REEF_3408_exp_green<- list.filter(REEF_3408_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
 
-#Trim down RVC dataset to these species
-fk_93_18_trim<- subset(fk_93_18,SPECIES_CD %in% fish_reef$rvc_code)
+####Mars batches - site weighted, expert data####
 
-#Separate out RVC data into the REEF sub-regions
-rvc_3403<- subset(fk_93_18_trim,region.id=='3403')
-rvc_3404<- subset(fk_93_18_trim,region.id=='3404')
-rvc_3408<- subset(fk_93_18_trim,region.id=='3408')
-
-#Only include sites in the sampling grid
-rvc_geog_3403<- subset(rvc_3403_pts,hab_class=='SPGR_LR'|hab_class=='SPGR_HR'|hab_class=='ISOL_MR')
-rvc_geog_3404<- subset(rvc_3404_pts,hab_class=='SPGR_LR'|hab_class=='SPGR_HR')
-rvc_geog_3408<- subset(rvc_3408_pts,hab_class=='SPGR_LR'|hab_class=='SPGR_HR')
-
-#Only include spur and groove
-rvc_3403_sg_plus<- filter(rvc_3403, LAT_LON %in% rvc_geog_3403$LAT_LON)
-rvc_3404_sg<- filter(rvc_3404, LAT_LON %in% rvc_geog_3404$LAT_LON)
-rvc_3408_sg<- filter(rvc_3408, LAT_LON %in% rvc_geog_3408$LAT_LON)
-
-#
-rvc_trends_3403<- rvc_batch(rvc_3403_sg_plus)
-rvc_trends_3404<- rvc_batch(rvc_3404_sg)
-rvc_trends_3408<- rvc_batch(rvc_3408_sg)
-
-rvc_3403_green<-  list.filter(rvc_trends_3403,length(na.omit(mean_ssu_abundance))>=18) #Records from 1993 to 2018 (23 years of data, 5 missing years = 18), 109 spp
-rvc_3404_green<-  list.filter(rvc_trends_3404,length(na.omit(mean_ssu_abundance))>=16) #Records from 1995 to 2018 (21 years of data, 5 missing = 16),75 spp
-rvc_3408_green<-  list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abundance))>=18) #Records from 1993 to 2018 (23 years of data, 5 missing years = 18), 115 spp 
 
 
 ####Mars batches - site weighted, expert data####
