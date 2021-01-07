@@ -15,7 +15,7 @@ gm_mean<- function(x){
 #Aggregate by SSU (15m, 15min diameter survey;some samples are broken down to multiple rows per SSU survey)
 ssu_density = function(x){
   x %>% dplyr::group_by(STATION_NR,PRIMARY_SAMPLE_UNIT,YEAR) %>%
-    dplyr::summarise(density=sum(na.omit(NUM)),occ=NA) %>% #Sums up the number of counts
+    dplyr::summarise(density=sum(NUM),occ=NA) %>% #Sums up the number of counts
     mutate(occ=ifelse(density>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR,STATION_NR) #Also scores presence/absence at the SSU level
 }
 
@@ -24,12 +24,12 @@ ssu_density = function(x){
 #Calculates number of SSUs, the total counts across the PSU, average count per SSU, and occupancy at the PSU level
 psu_density = function(x) {
   ssu_density(x) %>% dplyr::group_by(PRIMARY_SAMPLE_UNIT,YEAR) %>%
-    summarise(m=length(STATION_NR),ssu.var=var(density),mean.ssu.abundance=mean(density),occ=NA) %>% 
-    mutate(occ=ifelse(mean.ssu.abundance>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR)
+    summarise(m=length(STATION_NR),ssu.var=var(density),mean.ssu.abundance=mean(density),occ.n=NA,occ.nm=sum(occ)) %>% 
+    mutate(occ.n=ifelse(mean.ssu.abundance>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR)
 }
 
 #Transform PSU data to relative abundance and back-transform to the min. threshold
-psu_relative_abund = function(x) {
+psu_relative_abund = function(x){
   x %>% ssu_density() %>% dplyr::group_by(PRIMARY_SAMPLE_UNIT,YEAR) %>%
     summarise(m=length(STATION_NR),var=var(na.omit(density)),abundance=sum(na.omit(density)),RA=NA,abund_trans=NA) %>%  
     mutate(
@@ -49,7 +49,7 @@ psu_relative_abund = function(x) {
 #Create a yearly aggregate of density/total abundance and fill in missing years
 psu_density_year = function(x) {
   x %>% psu_density() %>% 
-    group_by(YEAR) %>% summarise(n=length(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_ssu_abundance=mean(mean.ssu.abundance),var_abundance=var(mean.ssu.abundance),n.occ=sum(occ),p.occ=sum(occ)/n()) %>%
+    group_by(YEAR) %>% summarise(n=n_distinct(PRIMARY_SAMPLE_UNIT), nm=sum(m), mean_ssu_abundance=mean(mean.ssu.abundance),var_abundance=var(mean.ssu.abundance),n.occ=sum(occ.n),nm.occ=sum(occ.nm),p.n.occ=sum(occ.n)/n,p.nm.occ=sum(occ.nm)/nm) %>%
     complete(YEAR=seq(min(na.omit(x$YEAR)),max(na.omit(x$YEAR)),by=1))
 }
 
@@ -65,9 +65,9 @@ psu_transform_year = function(x) {x %>% psu_relative_abund() %>%
     complete(YEAR=seq(min(x$YEAR),max(x$YEAR),by=1))
 }
 
-rvc_batch = function(x,GZ,sp,geog){
+rvc_batch = function(x,GZ,sp,hab){ #x = raw RVC data, GZ = geographic zone (3403,3404,etc.), sp = taxonomic dataset, #hab = character string for habitat classes
   x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
-  x1= x %>% subset(region.id==GZ) %>% subset(LAT_LON %in% geog$lat_lon) #Trim down full dataset to those in the selected plots (eg. only spur and groove) 
+  x1= x %>% subset(region.id==GZ) %>% subset(HABITAT_CD %in% hab) #Trim down full dataset to those in the selected habitat class (eg. only spur and groove) 
   x1= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0)) #This makes sure the zeros in each sample unit are recorded for each species
   
   RVC_TS=list()
@@ -220,10 +220,10 @@ R<-R[as.numeric(R$start)<20,]
 fk_99_18<- read.csv("./RVC/Florida_Keys_RVC.csv") #RVC survey data from 1999 to 2018
 fk_79_98<- read.csv("./RVC/Florida_keys_pre_1999.txt") #RVC survey dating from 1979 to 1998
 
-fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,0,fk_79_98$len)) #Replace -9, these represent 0s
+fk_79_98$len<- as.numeric(ifelse(fk_79_98$len==-9,1,fk_79_98$len)) #Replace -9, these represent unknowns
 
 t<- fk_79_98 %>% group_by(station_nr,psu,YEAR,spcode) %>%  #For each SSU and species
-  summarise(NUM=n(),sum=sum(len),id=ID[1]) %>% arrange(psu,YEAR,station_nr,spcode) #Summarize the number of individual entries (non-zero lengths indicate sightings)
+  summarise(NUM=length(len>0),sum=sum(len),id=ID[1]) %>% arrange(YEAR,spcode,psu,station_nr) #Summarize the number of individual entries (non-zero lengths indicate sightings)
 t$NUM<- ifelse(t$sum==0,0,t$NUM) #NUM also counts zeros, now only presences
 
 #Put back NUM into original data-frame, now each row represents a SSU survey
@@ -306,21 +306,18 @@ m<- match(fish_reef$sciname2,fish_rvc$SCINAME)
 fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
 #Separate out RVC data into the REEF sub-regions
-rvc_3403_geog<- subset(rvc_sites,region.id=='3403') #Sites in the Key Largo sub-region
+rvc_geog_3403<- subset(rvc_sites,region.id=='3403') #Sites in the Key Largo sub-region
 write.csv(rvc_3403_geog,'rvc_sites_3403.csv')
-rvc_3403_geog_SG<- subset(rvc_3403_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
-rvc_3404_geog<- subset(rvc_sites,region.id=='3404') #Sites in the Islamorada sub-region
+rvc_geog_3404<- subset(rvc_sites,region.id=='3404') #Sites in the Islamorada sub-region
 write.csv(rvc_3404_geog,'rvc_sites_3404.csv')
-rvc_3404_geog_SG<- subset(rvc_3404_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
-rvc_3408_geog<- subset(rvc_sites,region.id=='3408') #Sites in the Key West sub-region
+rvc_geog_3408<- subset(rvc_sites,region.id=='3408') #Sites in the Key West sub-region
 write.csv(rvc_3408_geog,'rvc_sites_3408.csv')
-rvc_3408_geog_SG<- subset(rvc_3408_geog,hab_class=='SPGR_LR'|hab_class=='SPGR_HR') #Subset down to the spur and groove habitat
 
 #Determine abundance trends for selected species in spur & groove surveys from each sub-region
-rvc_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,geog=rvc_3403_geog_SG)
-rvc_3403_green<- rlist::list.filter(rvc_3403,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
+rvc_3403<- rvc_batch(fk_93_18,GZ='3403',sp=fish_reef,hab=c('SPGR_LR','SPGR_HR','ISOL_MR'))
+rvc_3403_green<- rlist::list.filter(rvc_3403,length(na.omit(mean_ssu_abundance))>18) #Green list filtering down to well sampled species - 175 species
 
 rvc_trends_3404<- rvc_batch(fk_93_18,GZ='3404',sp=fish_reef,geog=rvc_3404_geog_SG)
 rvc_3404_green<- rlist::list.filter(rvc_trends_3404,length(na.omit(mean_ssu_abundance))>=18) #Green list filtering down to well sampled species - 175 species
@@ -331,12 +328,44 @@ rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abun
 
 ####5. Creating REEF time-series
 
-reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403 & hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR')
-reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
-reef_geog_3408<- subset(reef_3408_pts,is.na(grid_match)==F& n>=5)
+reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403 & hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR' & no.surveys>4) #Only include spur and groove, and isolated marine
+summary(reef_geog_3403$hab_class)
+#reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
+#reef_geog_3408<- subset(reef_3408_pts,is.na(grid_match)==F& n>=5)
 
 ####Reef & RVC trends####
 REEF_3403<- REEF_pull(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
+REEF_3403_green<- list.filter(REEF_3403,length(na.omit(mean_site_abund[1:26]))>18) #Green list - 170 species
+
+####Mars batches - site weighted, expert data####
+rvc.3403.comb<- do.call(rbind, lapply(rvc_3403_green, data.frame, stringsAsFactors=FALSE))
+rvc.green.3403.sp<- unique(rvc.3403.comb$Species)
+
+REEF.3403.comb.green<- do.call(rbind, lapply(REEF_3403_green, data.frame, stringsAsFactors=FALSE))
+REEF.green.3403.sp<- unique(REEF.3403.comb.green$comName)
+
+ts_comp<- list()
+years<- seq(1993,2018,by=1)
+n<- NA
+R_matrix<- list()
+
+
+for(i in 1:length(rvc.green.3403.sp)){
+  spp<- filter(fish_reef,commonname==rvc.green.3403.sp[i])
+  ts_comp[[i]]<- t(log10(rvc_3403_green[[i]]$mean_ssu_abundance)) #extract logged time-series
+  m<- match(spp$commonname,REEF.green.3403.sp)
+  if(is.na(m)==T){next}
+  ts_comp[[i]]<- rbind(ts_comp[[i]],t(log10(REEF_3403_green[[m]]$mean_site_abund[1:26])))
+  rownames(ts_comp[[i]])<- c(paste(spp$commonname,'rvc',sep=":"),paste(spp$commonname,'REEF',sep=":"))
+  colnames(ts_comp[[i]])<- years
+  
+}
+plot(ts_comp[[1]][1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts_comp[[1]]))),max(na.omit(c(ts_comp[[1]])))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
+lines(ts_comp[[1]][1,]~c(seq(1993,2018)),col='navy')
+points(ts_comp[[1]][1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
+lines(ts_comp[[1]][2,]~c(seq(1993,2018)),col='darkred')
+points(ts_comp[[1]][2,]~c(seq(1993,2018)),col='white',pch=21,bg='darkred',cex=1.2)
+legend(2016,c(max(na.omit(c(ts_comp[[1]])))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
 #REEF_3403_exp<- REEF_pull(R_exp,GZ='3403',sp=spp,geog=reef_geog_3403)
 
 REEF_3404<- REEF_pull(R,GZ='3404',sp=spp)
@@ -346,27 +375,26 @@ REEF_3408<- REEF_pull(R,GZ='3408',sp=spp)
 REEF_3408_exp<- REEF_pull(R_exp,GZ='3408',sp=spp)
 
 #Filter out low data (At least 20 years of sighting data)
-REEF_3403_green<- list.filter(REEF_3403,length(na.omit(mean_site_abund[1:26]))>=18) #Green list - 170 species
-REEF_3403_exp_green<- list.filter(REEF_3403_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
+#REEF_3403_exp_green<- list.filter(REEF_3403_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
 
-REEF_3404_green<- list.filter(REEF_3404,length(na.omit(meanAbund))>=18)#151 left
-REEF_3404_exp_green<- list.filter(REEF_3404_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
+#REEF_3404_green<- list.filter(REEF_3404,length(na.omit(meanAbund))>=18)#151 left
+#REEF_3404_exp_green<- list.filter(REEF_3404_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
 #REEF_3405_trim<- list.filter(REEF_3405,min(tot.surveys)>=10)
 #REEF_3406_trim<- list.filter(REEF_3405,min(tot.surveys)>=10)
 #REEF_3406_green<- list.filter(REEF_3406,length(na.omit(meanAbund))>=18)# 129 left
 REEF_3408_green<- list.filter(REEF_3408,length(na.omit(meanAbund))>=18)# 108 left
 REEF_3408_exp_green<- list.filter(REEF_3408_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
 
-####Mars batches - site weighted, expert data####
-
+  
+  #tier 1 - common state process
 
 
 ####Mars batches - site weighted, expert data####
 REEF_3403<- REEF_pull(R,GZ='3403',sp=spp,geog=reef_geog_3403)
 REEF_3403_exp<- REEF_pull(R_exp,GZ='3403',sp=spp,geog=reef_geog_3403)
 
-REEF_3403_green<- list.filter(REEF_3403,length(na.omit(meanAbund))>=18) #Green list - 175 species
-REEF_3403_exp_green<- list.filter(REEF_3403_exp,length(na.omit(meanAbund))>=18) #Green list - 175 species
+REEF_3403_green<- list.filter(REEF_3403,length(na.omit(meanAbund))>18) #Green list - 175 species
+REEF_3403_exp_green<- list.filter(REEF_3403_exp,length(na.omit(meanAbund))>18) #Green list - 175 species
 
 REEF.3403.comb.green<- do.call(rbind, lapply(REEF_3403_green, data.frame, stringsAsFactors=FALSE))
 REEF.green.3403.sp<- unique(REEF.3403.comb.green$sciName)
@@ -382,11 +410,11 @@ R_matrix<- list()
 setwd("C:/Users/14388/Desktop/Scripps - Project 1 RVC and REEF/RVC/timeseries/1993 expert timeseries - site-weighted sg_isol")
 mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,conv.3=NA,tier.1.AICc=NA,tier2.AICc=NA,tier3.AICc=NA,Q1=NA,Q2=NA,Q3.rvc=NA,Q3.reef=NA,U1=NA,U2.rvc=NA,U2.reef=NA,U3.rvc=NA,U3.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,R3.rvc=NA,R3.reef=NA,cName=NA,obs.grp=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,dAIC3=NA,mod=NA,years.rvc=NA,years.reef=NA)
 for(i in 1:length(rvc.green.3403.sp)){
-  spp<- filter(fish_reef,rvc_code==rvc.green.3403.sp[i])
+  spp<- filter(fish_reef,commonname==rvc.green.3403.sp[i])
   ts_comp[[i]]<- t(log10(rvc_3403_green[[i]]$mean_ssu_abundance)) #extract logged time-series
-  m<- match(spp$scientificname,REEF.green.3403.sp)
+  m<- match(spp$commonname,REEF.green.3403.sp)
   if(is.na(m)==T){next}
-  ts_comp[[i]]<- rbind(ts_comp[[i]],t(log10(REEF_3403_green[[m]]$SiteAbund[1:26])))
+  ts_comp[[i]]<- rbind(ts_comp[[i]],t(log10(REEF_3403_green[[m]]$mean_site_abund[1:26])))
   rownames(ts_comp[[i]])<- c(paste(spp$scientificname,'rvc',sep=":"),paste(spp$scientificname,'REEF',sep=":"))
   colnames(ts_comp[[i]])<- years
   
@@ -398,74 +426,54 @@ for(i in 1:length(rvc.green.3403.sp)){
   #tier 1 - common state process
   tier_1<- list(Z=Z_1,
                 Q = 'diagonal and equal',
-                R = R_matrix[[i]],
+                R = 'diagonal and unequal',
+                U = 'zero',
                 A = 'scaling',
-                x0 = 'unequal',
+                x0 = 'equal',
                 tinitx=0)
-  
-  #tier 2 - Diff. U, same process error
-  tier_2<- list(Z=Z_2,
-                Q ='diagonal and equal',
-                R = R_matrix[[i]],
-                A = 'scaling',
-                x0 = 'unequal',
-                tinitx=0)
-  
   #tier 3
   tier_3<- list(Z=Z_2,
                 Q = 'diagonal and unequal',
                 R = R_matrix[[i]],
+                U = 'zero',
                 A = 'scaling',
                 x0 = 'unequal',
                 tinitx=0)
   
   fit_1<-  MARSS(ts_comp[[i]], model = tier_1,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
-  fit_2<-  MARSS(ts_comp[[i]], model = tier_2,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
   fit_3<-  MARSS(ts_comp[[i]], model = tier_3,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
   params.1<- MARSSparamCIs(fit_1)
-  params.2<- MARSSparamCIs(fit_2)
   params.3<- MARSSparamCIs(fit_3)
+ 
   
-  mars_3403[i,1]=spp$scientificname
+  mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,tier1.AICc=NA,tier2.AICc=NA,Q1=NA,Q2.rvc=NA,Q2.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,years.rvc=NA,years.reef=NA)
+  
+  mars_3403[i,1]=spp$commonname
   mars_3403[i,2]=ifelse(is.null(fit_1$errors)==T,1,0)
-  mars_3403[i,3]=ifelse(is.null(fit_2$errors)==T,1,0)  
-  mars_3403[i,4]=ifelse(is.null(fit_3$errors)==T,1,0)  
-  mars_3403[i,5]=fit_1$AICc
-  mars_3403[i,6]=fit_2$AICc  
-  mars_3403[i,7]=fit_3$AICc  
-  mars_3403[i,8]=params.1$parMean[5]
-  mars_3403[i,9]=params.2$parMean[5]
-  mars_3403[i,10]=params.3$parMean[5]
-  mars_3403[i,11]=params.3$parMean[6]
-  mars_3403[i,12]=params.1$parMean[4]
-  mars_3403[i,13]=params.2$parMean[3] 
-  mars_3403[i,14]=params.2$parMean[4]
-  mars_3403[i,15]=params.3$parMean[3]
-  mars_3403[i,16]=params.3$parMean[4]
-  mars_3403[i,17]=params.1$parMean[2] 
-  mars_3403[i,18]=params.1$parMean[3]
-  mars_3403[i,19]=params.2$parMean[1] 
-  mars_3403[i,20]=params.2$parMean[2]
-  mars_3403[i,21]=params.3$parMean[1] 
-  mars_3403[i,22]=params.3$parMean[2]
-  mars_3403[i,23]=spp$commonname
-  mars_3403[i,24]=spp$group_assignment
-  mars_3403[i,25]=exp(mean(na.omit(ts_comp[[i]][1,])))
-  mars_3403[i,26]=exp(mean(na.omit(ts_comp[[i]][2,])))
-  mars_3403[i,27]=sd(exp(na.omit(ts_comp[[i]][1,])))
-  mars_3403[i,28]=sd(exp(na.omit(ts_comp[[i]][2,])))
-  mars_3403[i,29]=mars_3403[i,5]-min(mars_3403[i,5:7])
-  mars_3403[i,30]=mars_3403[i,6]-min(mars_3403[i,5:7])
-  mars_3403[i,31]=mars_3403[i,7]-min(mars_3403[i,5:7])
-  if(mars_3403[i,29]==0){mars_3403[i,32]=1}
-  if(mars_3403[i,30]==0){mars_3403[i,32]=2}
-  if(mars_3403[i,31]==0){mars_3403[i,32]=3}
-  mars_3403[i,33]=length(na.omit(ts_comp[[i]][1,]))
-  mars_3403[i,34]=length(na.omit(ts_comp[[i]][2,]))
+  mars_3403[i,3]=ifelse(is.null(fit_3$errors)==T,1,0)  
+  mars_3403[i,4]=fit_1$AICc
+  mars_3403[i,5]=fit_3$AICc  
+  mars_3403[i,6]=params.1$parMean[4]
+  mars_3403[i,7]=params.3$parMean[5]
+  mars_3403[i,8]=params.3$parMean[6]
+  mars_3403[i,9]=params.1$parMean[2]
+  mars_3403[i,10]=params.1$parMean[3] 
+  mars_3403[i,11]=params.3$parMean[1]
+  mars_3403[i,12]=params.3$parMean[2]
+  mars_3403[i,13]=10^(mean(na.omit(ts_comp[[i]][1,])))
+  mars_3403[i,14]=10^(mean(na.omit(ts_comp[[i]][2,])))
+  mars_3403[i,15]=sd(10^(na.omit(ts_comp[[i]][1,])))
+  mars_3403[i,16]=sd(10^(na.omit(ts_comp[[i]][2,])))
+  mars_3403[i,17]=mars_3403[i,4]-min(mars_3403[i,4:5])
+  mars_3403[i,18]=mars_3403[i,5]-min(mars_3403[i,4:5])
+  if(mars_3403[i,17]==0){mars_3403[i,19]=1}
+  if(mars_3403[i,18]==0){mars_3403[i,19]=2}
+  mars_3403[i,20]=length(na.omit(ts_comp[[i]][1,]))
+  mars_3403[i,21]=length(na.omit(ts_comp[[i]][2,]))
   
   
-  TS.plot.pdf(x=ts_comp[[i]],m=mars_3403$mod[i],sp=mars_3403$cName[i],GZ='Key Largo')
-  dev.off()
+  #TS.plot.pdf(x=ts_comp[[i]],m=mars_3403$mod[i],sp=mars_3403$cName[i],GZ='Key Largo')
+ # dev.off()
   print(i)
 }
 
@@ -509,7 +517,7 @@ for(i in 1:length(rvc.green.3403.sp)){
   #tier 3
   tier_3<- list(Z=Z_2,
                 Q = 'diagonal and unequal',
-                R = R_matrix[[i]],
+                R = 'diagonal and unequal',
                 A = 'scaling',
                 x0 = 'unequal',
                 tinitx=0)
