@@ -162,7 +162,15 @@ REEF_pull <- function(R,GZ,sp,geog){
 } #end function
 
 #Plot function
-
+TS_plot_MARSS<- function(ts,spp,GZ){
+  plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts_comp[[1]]))),max(na.omit(c(ts_comp[[1]])))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
+  lines(ts[1,]~c(seq(1993,2018)),col='navy')
+  points(ts[1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
+  lines(ts[2,]~c(seq(1993,2018)),col='darkred')
+  points(ts[2,]~c(seq(1993,2018)),col='white',pch=21,bg='darkred',cex=1.2)
+  legend(2016,c(max(na.omit(c(ts_comp[[1]])))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
+  
+}
 
 #####2. Data Loading and site matching####
 ###REEF data
@@ -360,12 +368,6 @@ for(i in 1:length(rvc.green.3403.sp)){
   colnames(ts_comp[[i]])<- years
   
 }
-plot(ts_comp[[1]][1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts_comp[[1]]))),max(na.omit(c(ts_comp[[1]])))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
-lines(ts_comp[[1]][1,]~c(seq(1993,2018)),col='navy')
-points(ts_comp[[1]][1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
-lines(ts_comp[[1]][2,]~c(seq(1993,2018)),col='darkred')
-points(ts_comp[[1]][2,]~c(seq(1993,2018)),col='white',pch=21,bg='darkred',cex=1.2)
-legend(2016,c(max(na.omit(c(ts_comp[[1]])))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
 #REEF_3403_exp<- REEF_pull(R_exp,GZ='3403',sp=spp,geog=reef_geog_3403)
 
 REEF_3404<- REEF_pull(R,GZ='3404',sp=spp)
@@ -408,7 +410,7 @@ n<- NA
 R_matrix<- list()
 
 setwd("C:/Users/14388/Desktop/Scripps - Project 1 RVC and REEF/RVC/timeseries/1993 expert timeseries - site-weighted sg_isol")
-mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,conv.3=NA,tier.1.AICc=NA,tier2.AICc=NA,tier3.AICc=NA,Q1=NA,Q2=NA,Q3.rvc=NA,Q3.reef=NA,U1=NA,U2.rvc=NA,U2.reef=NA,U3.rvc=NA,U3.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,R3.rvc=NA,R3.reef=NA,cName=NA,obs.grp=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,dAIC3=NA,mod=NA,years.rvc=NA,years.reef=NA)
+mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,tier1.AICc=NA,tier2.AICc=NA,Q1=NA,Q2.rvc=NA,Q2.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,years.rvc=NA,years.reef=NA)
 for(i in 1:length(rvc.green.3403.sp)){
   spp<- filter(fish_reef,commonname==rvc.green.3403.sp[i])
   ts_comp[[i]]<- t(log10(rvc_3403_green[[i]]$mean_ssu_abundance)) #extract logged time-series
@@ -444,9 +446,6 @@ for(i in 1:length(rvc.green.3403.sp)){
   fit_3<-  MARSS(ts_comp[[i]], model = tier_3,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
   params.1<- MARSSparamCIs(fit_1)
   params.3<- MARSSparamCIs(fit_3)
- 
-  
-  mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,tier1.AICc=NA,tier2.AICc=NA,Q1=NA,Q2.rvc=NA,Q2.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,years.rvc=NA,years.reef=NA)
   
   mars_3403[i,1]=spp$commonname
   mars_3403[i,2]=ifelse(is.null(fit_1$errors)==T,1,0)
@@ -454,8 +453,8 @@ for(i in 1:length(rvc.green.3403.sp)){
   mars_3403[i,4]=fit_1$AICc
   mars_3403[i,5]=fit_3$AICc  
   mars_3403[i,6]=params.1$parMean[4]
-  mars_3403[i,7]=params.3$parMean[5]
-  mars_3403[i,8]=params.3$parMean[6]
+  mars_3403[i,7]=params.3$parMean[3]
+  mars_3403[i,8]=params.3$parMean[4]
   mars_3403[i,9]=params.1$parMean[2]
   mars_3403[i,10]=params.1$parMean[3] 
   mars_3403[i,11]=params.3$parMean[1]
@@ -476,6 +475,11 @@ for(i in 1:length(rvc.green.3403.sp)){
  # dev.off()
   print(i)
 }
+
+for(i in 1:nrow())
+
+
+
 
 setwd("C:/Users/14388/Desktop/Scripps - Project 1 RVC and REEF/RVC")
 
