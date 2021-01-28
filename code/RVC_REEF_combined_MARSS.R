@@ -96,6 +96,16 @@ rvc_batch = function(x,GZ,sp,hab){ #x = raw RVC data, GZ = geographic zone (3403
   return(RVC_TS)
 }
 
+rvc_occurrence = function(x,GZ,sp){
+  x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
+  x1= x %>% subset(region.id==GZ)
+  x1= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0))
+  x2= subset(x1,SPECIES_CD==sp)
+  x2$occ=ifelse(x2$NUM>0,1,0)
+  x2<- transform(x2,psu_id=paste('psu',match(LAT_LON,unique(LAT_LON)),sep="_"))
+  
+}
+
 # Create function to calculate spp specific abundance scores by year for a given region
 REEF_pull <- function(R,GZ,sp,geog){
   # R is the REEF data in flat format (raw format provided by REEF)
