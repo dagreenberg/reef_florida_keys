@@ -401,7 +401,7 @@ rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abun
 
 
 ####5. Creating REEF time-series
-reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403) %>% subset(hab_class=='SPGR_HR'|hab_class=='SPGR_LR'|hab_class=='ISOL_MR') %>% subset(no.surveys>4) #Only include spur and groove, and isolated marine
+reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403) %>% subset(no.surveys>4) #Only include spur and groove, and isolated marine
 summary(reef_geog_3403$hab_class)
 #reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
 #reef_geog_3408<- subset(reef_3408_pts,is.na(grid_match)==F& n>=5)
