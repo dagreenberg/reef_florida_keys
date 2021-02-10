@@ -1,6 +1,6 @@
 rm(list=ls())
 setwd("C:/Users/14388/Desktop/reef_florida_keys_data")
-library(rstan);library(loo);library(bayesplot);library(dplyr);library(tidyverse);library(stringr)
+library(rstan);library(loo);library(bayesplot);library(dplyr);library(tidyverse);library(stringr);library(lubridate);library(rlist)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
@@ -22,14 +22,17 @@ rvc_occurrence = function(x,GZ,sp){
   return(rvc_occs)
 }
 
-occ_ts_rvc = function(x){
-  x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
-  x1= x %>% subset(region.id==GZ)
-  x1= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0))
+occ_ts_rvc = function(x){ #Takes the output from the previous function
   ts<- list()
-  for(i in 1:nrow(sp)){
-    x2 = x1 %>% subset(x1,SPECIES_CD==sp$rvc_code[i])
-    x2= x1 %>% group_by(YEAR) %>% summarize(n.occ=sum(occ),n.surv=n(),p.occ=n.occ/n.surv)  
+  for(i in 1:length(x)){
+    x1 = x[[i]]
+    x2= x1 %>% group_by(YEAR) %>% summarize(n.occ=sum(occ),n.surv=n(),p.occ=n.occ/n.surv,sp=unique(SPECIES_CD))
+    for(z in 1:nrow(x2)){
+      if(x2$p.occ[z]==0){
+        x2$p.occ[z]=NA
+      }
+    }
+    ts[[i]]=x2
   }
   return(ts)
 }
@@ -37,7 +40,7 @@ occ_ts_rvc = function(x){
 
 reef_occurrence = function(R,GZ,sp,geog){ #function to trim dataframe and add in occurrence data by species
   occ_list<- list()
-  TempDat<-R %>% subset(site4==GZ) %>% select('formid','speciesid','abundance',everything())
+  TempDat<-R %>% subset(site4==GZ) %>% subset(year<=2018) %>% select('formid','speciesid','abundance',everything())
   TempDat$hab_class<- geog$hab_class[match(TempDat$geogr,geog$geogid)]
   Zeros<- complete(TempDat,formid,nesting(speciesid),
                    fill=list(abundance=0)) %>%
@@ -51,7 +54,7 @@ reef_occurrence = function(R,GZ,sp,geog){ #function to trim dataframe and add in
   surveyors_trim<- subset(surveyors,n>=5) #only keep surveys by members with 5 or more dives
 
   TempDat3<- subset(TempDat2, fish_memberid %in% surveyors_trim$fish_memberid) #Trim out surveys from surveys with less than 5
-  site_subsets<-TempDat3 %>% group_by(geogr) %>% summarize(n=n_distinct(formid)) %>% subset(n>=5) #Calculate surveys per site
+  site_subsets<-TempDat3 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),hab_class=unique(hab_class)) %>% subset(n>=5 & is.na(hab_class)==F) #Calculate surveys per site
 
   TempDat4<- TempDat3 %>% subset(fish_memberid %in% surveyors_trim$fish_memberid) %>% subset(geogr %in% site_subsets$geogr) #Only keep well surveyed sites (n>=5)
   
@@ -63,7 +66,7 @@ reef_occurrence = function(R,GZ,sp,geog){ #function to trim dataframe and add in
 
 occ_ts_reef = function(R,GZ,sp,geog){
   occ_list<- list()
-  TempDat<-R %>% subset(site4==GZ) %>% select('formid','speciesid','abundance',everything())
+  TempDat<-R %>% subset(site4==GZ) %>% subset(year<=2018) %>% select('formid','speciesid','abundance',everything())
   TempDat$hab_class<- geog$hab_class[match(TempDat$geogr,geog$geogid)]
   Zeros<- complete(TempDat,formid,nesting(speciesid),
                    fill=list(abundance=0)) %>%
@@ -83,7 +86,7 @@ occ_ts_reef = function(R,GZ,sp,geog){
   
   for(i in 1:nrow(sp)){
     occ<- subset(TempDat4,speciesid==sp$speciesid[i]) #Subset out each species in the provided dataframe
-    occ_by_year<- occ %>% group_by(year) %>% summarize(n.occ=sum(occ),n.surv=n(),p.occ=n.occ/n.surv)
+    occ_by_year<- occ %>% group_by(year) %>% summarize(n.occ=sum(occ),n.surv=n(),p.occ=n.occ/n.surv,sp=unique(sp$commonname[i]))
     occ_list[[i]]<- occ_by_year
   }
   return(occ_list)
@@ -91,7 +94,7 @@ occ_ts_reef = function(R,GZ,sp,geog){
 
 
 
-comp_plot = function(ts,mod_mat,sp,GZ){
+comp_plot_rvc = function(ts,mod_mat,sp,GZ){
   plot(ts$p.occ~ts$YEAR,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
   lines(ts$p.occ~ts$YEAR,lwd=2,col='darkblue')
   points(ts$p.occ~ts$YEAR,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
@@ -102,6 +105,96 @@ comp_plot = function(ts,mod_mat,sp,GZ){
   polygon(x.polygon, y.polygon, col = adjustcolor('dodgerblue3', alpha = 0.2), border=NA) # Add uncertainty polygon
   
 }
+
+comp_plot_SS_rvc = function(ts,x_mat,y_mat,sp,GZ){
+  plot(ts$p.occ~ts$YEAR,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
+  lines(ts$p.occ~ts$YEAR,lwd=2,col='darkblue')
+  points(ts$p.occ~ts$YEAR,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
+  points(x_mat$median~seq(min(ts$YEAR),max(ts$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat$median~seq(min(ts$YEAR),max(ts$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  points(y_mat$median~ts$YEAR,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat$median~ts$YEAR,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
+  x.polygon <- c(seq(min(ts$YEAR),max(ts$YEAR)), rev(seq(min(ts$YEAR),max(ts$YEAR)))) # Define a polygon x value for adding to a plot
+  y.polygon <- c(x_mat$l.95, rev(x_mat$u.95)) # Define a polygon y value for adding to a plot
+  polygon(x.polygon, y.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+}
+
+comp_plot_SS_reef = function(ts,x_mat,y_mat,sp,GZ){
+  plot(ts$p.occ~ts$year,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
+  lines(ts$p.occ~ts$year,lwd=2,col='darkblue')
+  points(ts$p.occ~ts$year,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
+  points(x_mat$median~seq(min(ts$year),max(ts$year)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat$median~seq(min(ts$year),max(ts$year)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  points(y_mat$median~ts$year,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat$median~ts$year,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
+  x.polygon <- c(seq(min(ts$year),max(ts$year)), rev(seq(min(ts$year),max(ts$year)))) # Define a polygon x value for adding to a plot
+  y.polygon <- c(x_mat$l.95, rev(x_mat$u.95)) # Define a polygon y value for adding to a plot
+  polygon(x.polygon, y.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+  
+}
+
+comp_plot_SS_comb = function(ts1,ts2,x_mat,y_mat1,y_mat2,sp,GZ){
+  plot(ts1$p.occ~ts1$YEAR,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
+  lines(ts1$p.occ~ts1$YEAR,lwd=2,col='darkblue')
+  points(ts1$p.occ~ts1$YEAR,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
+  lines(ts2$p.occ~ts2$year,lwd=2,col='darkred')
+  points(ts2$p.occ~ts2$year,pch=21,col='darkred',bg='white',cex=1.5,lwd=1.5)
+  
+  
+  points(x_mat$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  points(y_mat1$median~ts1$YEAR,pch=21,col=adjustcolor('darkblue',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat1$median~ts1$YEAR,lwd=1.5,col=adjustcolor('darkblue',alpha.f = 0.8),lty=5)
+  points(y_mat2$median~ts2$year,pch=21,col=adjustcolor('darkred',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat2$median~ts2$year,lwd=1.5,col=adjustcolor('darkred',alpha.f = 0.8),lty=5)
+  
+  
+  x.polygon <- c(seq(min(ts1$YEAR),max(ts1$YEAR)), rev(seq(min(ts1$YEAR),max(ts1$YEAR)))) # Define a polygon x value for adding to a plot
+  y.polygon <- c(x_mat$l.95, rev(x_mat$u.95)) # Define a polygon y value for adding to a plot
+  polygon(x.polygon, y.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+  
+}
+
+comp_plot_SS_sep = function(ts1,ts2,x_mat1,x_mat2,y_mat1,y_mat2,sp,GZ){
+  plot(ts1$p.occ~ts1$YEAR,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
+  lines(ts1$p.occ~ts1$YEAR,lwd=2,col='darkblue')
+  points(ts1$p.occ~ts1$YEAR,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
+  lines(ts2$p.occ~ts2$year,lwd=2,col='darkred')
+  points(ts2$p.occ~ts2$year,pch=21,col='darkred',bg='white',cex=1.5,lwd=1.5)
+  
+  
+  points(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  
+  points(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  points(y_mat1$median~ts1$YEAR,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat1$median~ts1$YEAR,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
+  points(y_mat2$median~ts2$year,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat2$median~ts2$year,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
+  
+  
+  x.polygon <- c(seq(min(ts1$YEAR),max(ts1$YEAR)), rev(seq(min(ts1$YEAR),max(ts1$YEAR)))) # Define a polygon x value for adding to a plot
+  y1.polygon <- c(x_mat1$l.95, rev(x_mat1$u.95)) # Define a polygon y value for adding to a plot
+  y2.polygon <- c(x_mat2$l.95, rev(x_mat2$u.95)) # Define a polygon y value for adding to a plot
+  polygon(x.polygon, y1.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+  polygon(x.polygon, y2.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+  
+}
+
+comp_plot_reef = function(ts,mod_mat,sp,GZ){
+  plot(ts$p.occ~ts$year,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
+  lines(ts$p.occ~ts$year,lwd=2,col='darkblue')
+  points(ts$p.occ~ts$year,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
+  points(mod_mat$median~ts$year,pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(mod_mat$median~ts$year,lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  x.polygon <- c(ts$year, rev(ts$year)) # Define a polygon x value for adding to a plot
+  y.polygon <- c(mod_mat$l.95, rev(mod_mat$u.95)) # Define a polygon y value for adding to a plot
+  polygon(x.polygon, y.polygon, col = adjustcolor('dodgerblue3', alpha = 0.2), border=NA) # Add uncertainty polygon
+  
+}
+
+
 
 hab_breakdown = function(x){
   hab = x %>% group_by(YEAR) %>% count(HABITAT_CD) %>% arrange(YEAR,HABITAT_CD)
@@ -198,7 +291,6 @@ reef_geog$lon_dd<- reef_geog$lon_deg-reef_geog$lon_min/60
 #Extract out florida key subregions for select zones
 reef_3403_sites<- subset(reef_geog,region.id=='3403')
 
-
 #RVC sites
 fk_79_18$LAT_LON<- paste(fk_79_18$LAT_DEGREES,fk_79_18$LON_DEGREES,sep='_') #Find unique geographic position
 rvc_sites<- data.frame(lat=fk_79_18$LAT_DEGREES,lon=fk_79_18$LON_DEGREES,lat_lon=fk_79_18$LAT_LON) 
@@ -253,6 +345,8 @@ for(i in 1:nrow(rvc_sites)){
 }
 rvc_sites$hab_class<- as.factor(rvc_grid$habclass[rvc_sites$grid_match])
 
+reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403)
+
 #### 4. Creating RVC time-series ####
 #Fish data from REEF - remove ultra rare and basket species designations
 fish_reef<- read.csv("Caribbean_fish_trait_matrix.csv") #fish species found in the Tropical Western Atlantic
@@ -265,9 +359,13 @@ fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
+
 rvc_occs<- rvc_occurrence(fk_93_18,GZ='3403',sp=fish_reef)
+rvc_ts<- occ_ts_rvc(rvc_occs)
+rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>16)
+gc()
 reef_occs<- reef_occurrence(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
-occs_ts_reef<- reef_occurrence(R,GZ='3403',sp=fish_reef)
+reef_ts<- occ_ts_reef(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
 
 
 ####Stan model
@@ -368,7 +466,8 @@ model{
   }
 }
 "
-logit_test_yr2<-"data{
+
+logit_test_rvc<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
   int y[N]; //presence or absence on each survey
   int<lower=0> N_hab; //number of habitat classes
@@ -377,40 +476,104 @@ logit_test_yr2<-"data{
   int<lower=1,upper=N_yr> year[N]; // vector of year
 }
 parameters {
+  real alpha; 
   //global intercept
-  real alpha;
-  
-  //
   
   //deviations from intercept
   real a_hab[N_hab]; //deviation between habitats
-  real a_yr[N_yr]; //deviation between months
+  real a_yr[N_yr]; //deviation between years
+ 
   
   //st dev on the deviations
-  real<lower = 0> sigma_hab;
-  real<lower = 0> sigma_yr;
+  real<lower = 0> sigma_hab; //sigma on habitat
+  real<lower = 0> sigma_yr; //sigma on year
 }
 
 transformed parameters{
+ 
   vector[N] eta;
   
   for(n in 1:N){
-    eta[n] = alpha + a_hab[hab_class[n]] + a_yr[year[n]];
+    eta[n] = alpha + a_yr[year[n]] + a_hab[hab_class[n]];
   }
 }
 
 model{
   //priors
   alpha ~ normal(0,10);
-  
+
   //standard deviations
   sigma_hab ~ cauchy(0, 5);
   sigma_yr ~ cauchy(0, 5);
   
   //varying intercepts
   a_hab ~ normal(0, sigma_hab);
-  a_yr ~ student_t(5, 0, sigma_yr);
+  a_yr ~student_t(5, 0, sigma_yr);
+  
+  for(i in 1:N){
+    y[i] ~ bernoulli_logit(eta[i]);
+  }
+}
+"
+
+logit_test_SS_rvc<-"data{
+  int TT; //timespan
+  int N;//number of observations (SSU surveys)
+  int y[N]; //presence or absence on each survey
+  int N_hab; //number of habitat classes
+  int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
+  int N_yr; //number of years
+  int yr_index[N_yr]; //index of years
+  int<lower=1,upper=N_yr> year_id[N]; // vector of year ids
+}
+parameters {
+  //global intercept
+  real x0;
+  real x[TT];
+  
+  //deviations from intercept
+  real a_hab[N_hab]; //deviation between habitats
+  real a_yr[N_yr]; //deviation between years
+  
+  //st dev on the deviations
+  real<lower = 0> sd_hab; //sigma on habitat
+  real<lower = 0> sd_r; //sigma for observation error
+  real<lower = 0> sd_q; //sigma on process error
+}
+
+transformed parameters{
+   vector[N] eta;
+  
+  for(n in 1:N){
+    eta[n] = a_yr[year_id[n]] + a_hab[hab_class[n]];
+  }
+}  
+  
+model{
+  //priors
+  x0 ~ normal(0,10);
+  
+  //standard deviations
+  sd_hab ~ cauchy(0,5);
+  sd_r ~ cauchy(0,5);
+  sd_q ~ cauchy(0,5);
+  
+  //varying intercepts
+  a_hab ~ normal(0, sd_hab);
+  
+  //state process 
+  x[1] ~ normal(x0,sd_q);
+  
+  for(t in 2:TT){
+    x[t] ~ normal(x[t-1],sd_q);
+  }
+  
+  //observation process for year
+  for(i in 1:N_yr){
+    a_yr[i]~ normal(x[yr_index[i]],sd_r); 
+  }
  
+  //draw presences
   for(i in 1:N){
     y[i] ~ bernoulli_logit(eta[i]);
   }
@@ -422,142 +585,687 @@ logit_test_reef<-"data{
   int y[N]; //presence or absence on each survey
   int<lower=0> N_hab; //number of habitat classes
   int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
+  int<lower=0> N_site; //number of sites
+  int<lower=1,upper=N_site> site[N]; // vector of site identities
+  int<lower=0> N_dv; //number of divers
+  int<lower=1,upper=N_dv> diver[N]; // vector of diver identities
   int<lower=0> N_yr; //number of years
   int<lower=1,upper=N_yr> year[N]; // vector of year
+  int K; // columns in the covariate matrix
+  matrix[N,K] X; // design matrix X
+  
 }
 parameters {
   //global intercept
   real alpha;
   
-  //
-  
   //deviations from intercept
   real a_hab[N_hab]; //deviation between habitats
-  real a_yr[N_yr]; //deviation between months
+  real a_yr[N_yr]; //deviation between years
+  real a_site[N_site]; //deviation between sites
+  real a_dv[N_dv]; //deviation between divers
+  
+  //covariates for effort variables
+  vector[K] beta;
   
   //st dev on the deviations
   real<lower = 0> sigma_hab;
   real<lower = 0> sigma_yr;
+  real<lower = 0> sigma_site;
+  real<lower = 0> sigma_dv;
 }
 
 transformed parameters{
   vector[N] eta;
   
   for(n in 1:N){
-    eta[n] = alpha + a_hab[hab_class[n]] + a_yr[year[n]];
+    eta[n] = alpha + a_hab[hab_class[n]] + a_yr[year[n]] + a_site[site[n]]+ a_dv[diver[n]] + X[n,]*beta;
   }
 }
 
 model{
   //priors
   alpha ~ normal(0,10);
+  beta ~ normal(0,2);
   
   //standard deviations
   sigma_hab ~ cauchy(0, 5);
   sigma_yr ~ cauchy(0, 5);
+  sigma_site ~ cauchy(0, 5);
+  sigma_dv ~ cauchy(0, 5);
   
   //varying intercepts
   a_hab ~ normal(0, sigma_hab);
   a_yr ~ student_t(5, 0, sigma_yr);
+  a_site ~ normal(0, sigma_site);
+  a_dv ~ normal(0, sigma_dv);
  
   for(i in 1:N){
     y[i] ~ bernoulli_logit(eta[i]);
   }
 }
 "
-
-logit_test_hab<-"data{
+logit_test_SS_reef<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
   int y[N]; //presence or absence on each survey
   int<lower=0> N_hab; //number of habitat classes
   int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
+  int<lower=0> N_site; //number of sites
+  int<lower=1,upper=N_site> site[N]; // vector of site identities
+  int<lower=0> N_dv; //number of divers
+  int<lower=1,upper=N_dv> diver[N]; // vector of diver identities
+  int<lower=0> N_yr; //number of years
+  int yr_index[N_yr]; //index of years
+  int<lower=1,upper=N_yr> year_id[N]; // vector of year
+  int K; // columns in the covariate matrix
+  matrix[N,K] X; // design matrix X
+  int TT; //timespan
+  
 }
 parameters {
   //global intercept
-  real alpha;
+  real x[TT];
+  real x0;
   
   //deviations from intercept
   real a_hab[N_hab]; //deviation between habitats
-
+  real a_yr[N_yr]; //deviation between years
+  real a_site[N_site]; //deviation between sites
+  real a_dv[N_dv]; //deviation between divers
+  
+  //covariates for effort variables
+  vector[K] beta;
+  
   //st dev on the deviations
   real<lower = 0> sigma_hab;
+  real<lower = 0> sd_q;
+  real<lower = 0> sd_r;
+  real<lower = 0> sigma_site;
+  real<lower = 0> sigma_dv;
 }
 
-transformed parameters{
-  vector[N] eta;
-  
-  for(n in 1:N){
-    eta[n] = alpha + a_hab[hab_class[n]];
-  }
-}
 
 model{
   //priors
-  alpha ~ normal(0,10);
+  x0 ~ normal(0, 10);
+  beta ~ normal(0,2);
   
   //standard deviations
   sigma_hab ~ cauchy(0, 5);
+  sd_q ~ cauchy(0, 5);
+  sd_r ~ cauchy(0, 5);
+  sigma_site ~ cauchy(0, 5);
+  sigma_dv ~ cauchy(0, 5);
   
   //varying intercepts
   a_hab ~ normal(0, sigma_hab);
+  a_site ~ normal(0, sigma_site);
+  a_dv ~ normal(0, sigma_dv);
+ 
+ 
+ //state process 
+  x[1] ~ normal(x0,sd_q);
+  
+  for(t in 2:TT){
+    x[t] ~ normal(x[t-1],sd_q);
+  }
+  
+  //observation process for year
+  for(i in 1:N_yr){
+    a_yr[i]~ normal(x[yr_index[i]],sd_r); 
+  }
  
   for(i in 1:N){
-    y[i] ~ bernoulli_logit(eta[i]);
+    y[i] ~ bernoulli_logit(a_yr[year_id[i]] + a_hab[hab_class[i]]+ a_site[site[i]]+ a_dv[diver[i]] + X[i,]*beta);
   }
 }
 "
 
-logit_test_psu<-"data{
-  int<lower=1> N;//number of observations (SSU surveys)
-  int y[N]; //presence or absence on each survey
-  int<lower=0> N_psu; //number of primary sample units
-  int<lower=0> N_hab; //number of habitat classes
-  int<lower=1,upper=N_psu> psu_id[N]; // vector of psu identities
-  int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
+
+logit_test_SS_comb<-"data{
+  int TT; //timespan
+  int N_rvc;//number of observations (SSU surveys)
+  int y1[N_rvc]; //presence or absence on each survey
+  int N_reef;//number of observations (REEF surveys)
+  int y2[N_reef]; //presence or absence on each survey
+  int N_hab1; //number of habitat classes
+  int<lower=1,upper=N_hab1> hab_class1[N_rvc]; // vector of habitat class identities
+  int N_hab2; //number of habitat classes
+  int<lower=1,upper=N_hab2> hab_class2[N_reef]; // vector of habitat class identities
+  int N_yr1; //number of years rvc
+  int N_yr2; //number of years reef
+  int yr_index1[N_yr1]; //index of years - RVC
+  int<lower=1,upper=N_yr1> year_id1[N_rvc]; // vector of year ids
+  int yr_index2[N_yr2]; //index of years - REEF
+  int<lower=1,upper=N_yr2> year_id2[N_reef]; // vector of year ids
+  int<lower=0> N_site; //number of sites in reef
+  int<lower=1,upper=N_site> site[N_reef]; // vector of site identities for reef
+  int<lower=0> N_dv; //number of divers in reef
+  int<lower=1,upper=N_dv> diver[N_reef]; // vector of diver identities for reef
+  int K; // columns in the covariate matrix
+  matrix[N_reef,K] X; // design matrix X
 }
 parameters {
   //global intercept
-  real alpha;
-  
-  //
+  real x0;
+  real x[TT];
+  real beta;
+  real s;
   
   //deviations from intercept
-  real a_hab[N_hab]; //deviation between habitats
-  real a_psu[N_psu]; //deviation between months
+  real a_hab1[N_hab1]; //deviation between habitats
+  real a_hab2[N_hab2]; //deviation between habitats
+  real a_yr1[N_yr1]; //deviation between years
+  real a_yr2[N_yr2]; //deviation between years
+  real a_site[N_site]; //deviation between sites
+  real a_dv[N_dv]; //deviation between divers
+  
   
   //st dev on the deviations
-  real<lower = 0> sigma_hab;
-  real<lower = 0> sigma_psu;
-}
-
-transformed parameters{
-  vector[N] eta;
-  
-  for(n in 1:N){
-    eta[n] = alpha + a_hab[hab_class[n]] + a_psu[psu_id[n]];
-  }
+  real<lower = 0> sd_hab1; //sigma on habitat
+  real<lower = 0> sd_hab2; //sigma on habitat
+  real<lower = 0> sd_r1; //sigma for observation error
+  real<lower = 0> sd_r2; //sigma for observation error
+  real<lower = 0> sd_q; //sigma on process error
+  real<lower = 0> sd_site; //sigma on sites
+  real<lower = 0> sd_dv; //sigma on divers
 }
 
 model{
   //priors
-  alpha ~ normal(0,10);
-  
+  x0 ~ normal(0,10);
+  beta ~ normal(0,2);
+  s~normal(0,5);
+   
   //standard deviations
-  sigma_hab ~ cauchy(0, 5);
-  sigma_psu ~ cauchy(0, 5);
+  sd_hab1 ~ cauchy(0,5);
+  sd_hab2 ~ cauchy(0,5);
+  sd_r1 ~ cauchy(0,5);
+  sd_r2 ~ cauchy(0,5);
+  sd_q ~ cauchy(0,5);
+  sd_dv ~ cauchy(0,5);
+  sd_site ~ cauchy(0,5);
   
   //varying intercepts
-  a_hab ~ normal(0, sigma_hab);
-  a_psu ~ normal(0, sigma_psu);
+  a_hab1 ~ normal(0, sd_hab1);
+  a_hab2 ~ normal(0, sd_hab2);
+  a_site ~ normal(0, sd_site);
+  a_dv ~ normal(0, sd_dv);
+  
+  //state process 
+  x[1] ~ normal(x0,sd_q);
+  
+  for(t in 2:TT){
+    x[t] ~ normal(x[t-1],sd_q);
+  }
+  
+  //observation process for year
+  
+  for(i in 1:N_yr1){
+    a_yr1[i]~ normal(x[yr_index1[i]],sd_r1); 
+  }
+  
+  for(i in 1:N_yr2){
+    a_yr2[i]~ normal(x[yr_index2[i]]+s,sd_r2); 
+  }
  
-  for(i in 1:N){
-    y[i] ~ bernoulli_logit(eta[i]);
+  //draw presences
+  for(i in 1:N_rvc){
+    y1[i] ~ bernoulli_logit(a_yr1[year_id1[i]] + a_hab1[hab_class1[i]]);
+  }
+  
+   for(n in 1:N_reef){
+    y2[n] ~ bernoulli_logit(a_yr2[year_id2[n]] + a_hab2[hab_class2[n]] + a_site[site[n]]+ a_dv[diver[n]] + X[n,]*beta);
   }
 }
 "
-psu_hab<- distinct(blue_angel,psu_id,.keep_all=T)
-psu_in_hab<- as.numeric(factor(psu_hab$HABITAT_CD))
 
+logit_test_SS_sep<-"data{
+  int TT; //timespan
+  int N_rvc;//number of observations (SSU surveys)
+  int y1[N_rvc]; //presence or absence on each survey
+  int N_reef;//number of observations (REEF surveys)
+  int y2[N_reef]; //presence or absence on each survey
+  int N_hab1; //number of habitat classes
+  int<lower=1,upper=N_hab1> hab_class1[N_rvc]; // vector of habitat class identities
+  int N_hab2; //number of habitat classes
+  int<lower=1,upper=N_hab2> hab_class2[N_reef]; // vector of habitat class identities
+  int N_yr1; //number of years rvc
+  int N_yr2; //number of years reef
+  int yr_index1[N_yr1]; //index of years - RVC
+  int<lower=1,upper=N_yr1> year_id1[N_rvc]; // vector of year ids
+  int yr_index2[N_yr2]; //index of years - REEF
+  int<lower=1,upper=N_yr2> year_id2[N_reef]; // vector of year ids
+  int<lower=0> N_site; //number of sites in reef
+  int<lower=1,upper=N_site> site[N_reef]; // vector of site identities for reef
+  int<lower=0> N_dv; //number of divers in reef
+  int<lower=1,upper=N_dv> diver[N_reef]; // vector of diver identities for reef
+  int K; // columns in the covariate matrix
+  matrix[N_reef,K] X; // design matrix X
+}
+parameters {
+  //global intercept
+  real x01;
+  real x02;
+  real x1[TT];
+  real x2[TT];
+  real beta;
+  
+  //deviations from intercept
+  real a_hab1[N_hab1]; //deviation between habitats
+  real a_hab2[N_hab2]; //deviation between habitats
+  real a_yr1[N_yr1]; //deviation between years
+  real a_yr2[N_yr2]; //deviation between years
+  real a_site[N_site]; //deviation between sites
+  real a_dv[N_dv]; //deviation between divers
+  
+  
+  //st dev on the deviations
+  real<lower = 0> sd_hab1; //sigma on habitat
+  real<lower = 0> sd_hab2; //sigma on habitat
+  real<lower = 0> sd_r1; //sigma for observation error
+  real<lower = 0> sd_r2; //sigma for observation error
+  real<lower = 0> sd_q1; //sigma on process error
+  real<lower = 0> sd_q2; //sigma on process error
+  real<lower = 0> sd_site; //sigma on sites
+  real<lower = 0> sd_dv; //sigma on divers
+}
+
+model{
+  //priors
+  x01 ~ normal(0,10);
+  x02 ~ normal(0,10);
+  beta ~ normal(0,2);
+   
+  //standard deviations
+  sd_hab1 ~ cauchy(0,5);
+  sd_hab2 ~ cauchy(0,5);
+  sd_r1 ~ cauchy(0,5);
+  sd_r2 ~ cauchy(0,5);
+  sd_q1 ~ cauchy(0,5);
+  sd_q2 ~ cauchy(0,5);
+  sd_dv ~ cauchy(0,5);
+  sd_site ~ cauchy(0,5);
+  
+  //varying intercepts
+  a_hab1 ~ normal(0, sd_hab1);
+  a_hab2 ~ normal(0, sd_hab2);
+  a_site ~ normal(0, sd_site);
+  a_dv ~ normal(0, sd_dv);
+  
+  //state process 
+  x1[1] ~ normal(x01,sd_q1);
+  x2[1] ~ normal(x02,sd_q2);
+  
+  for(t in 2:TT){
+    x1[t] ~ normal(x1[t-1],sd_q1);
+    x2[t] ~ normal(x2[t-1],sd_q2);
+  }
+  
+  //observation process for year
+  
+  for(i in 1:N_yr1){
+    a_yr1[i]~ normal(x1[yr_index1[i]],sd_r1); 
+  }
+  
+  for(i in 1:N_yr2){
+    a_yr2[i]~ normal(x2[yr_index2[i]],sd_r2); 
+  }
+ 
+  //draw presences
+  for(i in 1:N_rvc){
+    y1[i] ~ bernoulli_logit(a_yr1[year_id1[i]] + a_hab1[hab_class1[i]]);
+  }
+  
+   for(n in 1:N_reef){
+    y2[n] ~ bernoulli_logit(a_yr2[year_id2[n]] + a_hab2[hab_class2[n]] + a_site[site[n]]+ a_dv[diver[n]] + X[n,]*beta);
+  }
+}
+"
+
+
+####Combined state - blue angelfish
+
+blue_angel<- rvc_occs[[1]]
+blue_angel_ts<-rvc_ts[[1]]
+blue_angel_reef<- reef_occs[[1]]
+
+year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
+blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
+
+
+
+blue_angel_reef<- reef_occs[[1]]
+blue_angel_reef<- subset(blue_angel_reef,year<=2018)
+blue_angel_reef_ts<- reef_ts[[1]]
+
+X<- matrix(data=c(scale(as.numeric(blue_angel_reef$btime)),scale(as.numeric(blue_angel_reef$visibility)),scale(as.numeric(blue_angel_reef$current))),ncol=3,nrow=nrow(blue_angel_reef))
+
+test_1_comb<- rstan::stan(model_code = logit_test_SS_comb, data = list(y2 = blue_angel_reef$occ, 
+                                                                    N_reef = nrow(blue_angel_reef),
+                                                                    N_hab2 = length(unique(blue_angel_reef$hab_class)),
+                                                                    hab_class2 =as.numeric(factor(blue_angel_reef$hab_class)),
+                                                                    N_yr2 =length(unique(blue_angel_reef$year)),
+                                                                    year_id2=as.numeric(factor(blue_angel_reef$year)),
+                                                                    yr_index2=sort(unique(as.numeric(factor(blue_angel_reef$year)))),
+                                                                    site=as.numeric(factor(blue_angel_reef$geogr)),
+                                                                    N_site=length(unique(blue_angel_reef$geogr)),
+                                                                    diver=as.numeric(factor(blue_angel_reef$fish_memberid)),
+                                                                    N_dv=length(unique(blue_angel_reef$fish_memberid)),
+                                                                    K=ncol(X),
+                                                                    X=X,
+                                                                    y1 = blue_angel$occ, 
+                                                                    N_rvc = nrow(blue_angel),
+                                                                    N_hab1 = length(unique(blue_angel$HABITAT_CD)),
+                                                                    hab_class1=as.numeric(factor(blue_angel$HABITAT_CD)),
+                                                                    N_yr1 =length(unique(blue_angel$YEAR)),
+                                                                    TT=26,
+                                                                    year_id1=as.numeric(factor(blue_angel$YEAR)),
+                                                                    yr_index1=sort(unique(blue_angel$year_index))),
+                          pars = c("x",'s','a_hab1','a_hab2','a_yr1','a_yr2','sd_r1','sd_r2','sd_q'),
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 500, chains = 4, iter = 2000, thin = 10)
+
+posterior <- as.array(test_1_comb)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('x[',seq(1:26),']',sep='')),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
+mcmc_trace(posterior, pars = c("sd_r"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
+
+ba_params<- rstan::extract(test_1_comb)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ba_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ba_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ba_params$x[,i]),0.025)
+}
+y_mat_1<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat_1[i,1]=median(plogis(ba_params$a_yr1[,i]))
+  y_mat_1[i,2]=quantile(plogis(ba_params$a_yr1[,i]),0.975)
+  y_mat_1[i,3]=quantile(plogis(ba_params$a_yr1[,i]),0.025)
+}
+
+y_mat_2<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  y_mat_2[i,1]=median(plogis(ba_params$a_yr2[,i]))
+  y_mat_2[i,2]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.975)
+  y_mat_2[i,3]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.025)
+}
+
+comp_plot_SS_comb(ts1=rvc_ts[[1]],ts2=reef_ts[[1]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Blue Angelfish',GZ='Key Largo')
+
+#gray angelfish
+gray_angel<- rvc_occs[[4]]
+gray_angel_ts<-rvc_ts[[4]]
+gray_angel_reef<- reef_occs[[4]]
+
+year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
+gray_angel$year_index=year_index$y.ind[match(gray_angel$YEAR,year_index$yr)]
+gray_angel_reef<- reef_occs[[4]]
+gray_angel_reef_ts<- reef_ts[[4]]
+
+X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=3,nrow=nrow(gray_angel_reef))
+
+test_1_comb_ga<- rstan::stan(model_code = logit_test_SS_comb, data = list(y2 = gray_angel_reef$occ, 
+                                                                       N_reef = nrow(gray_angel_reef),
+                                                                       N_hab2 = length(unique(gray_angel_reef$hab_class)),
+                                                                       hab_class2 =as.numeric(factor(gray_angel_reef$hab_class)),
+                                                                       N_yr2 =length(unique(gray_angel_reef$year)),
+                                                                       year_id2=as.numeric(factor(gray_angel_reef$year)),
+                                                                       yr_index2=sort(unique(as.numeric(factor(gray_angel_reef$year)))),
+                                                                       site=as.numeric(factor(gray_angel_reef$geogr)),
+                                                                       N_site=length(unique(gray_angel_reef$geogr)),
+                                                                       diver=as.numeric(factor(gray_angel_reef$fish_memberid)),
+                                                                       N_dv=length(unique(gray_angel_reef$fish_memberid)),
+                                                                       K=ncol(X),
+                                                                       X=X,
+                                                                       y1 = gray_angel$occ, 
+                                                                       N_rvc = nrow(gray_angel),
+                                                                       N_hab1 = length(unique(gray_angel$HABITAT_CD)),
+                                                                       hab_class1=as.numeric(factor(gray_angel$HABITAT_CD)),
+                                                                       N_yr1 =length(unique(gray_angel$YEAR)),
+                                                                       TT=26,
+                                                                       year_id1=as.numeric(factor(gray_angel$YEAR)),
+                                                                       yr_index1=sort(unique(gray_angel$year_index))),
+                          pars = c("x",'s','a_hab1','a_hab2','a_yr1','a_yr2','sd_r1','sd_r2','sd_q','sd_dv','sd_hab1','sd_hab2','sd_site','beta'),
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 500, chains = 4, iter = 2000, thin = 1)
+
+posterior <- as.array(test_1_comb_ga)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('beta[1]',sep='')),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
+mcmc_trace(posterior, pars = c("sd_r"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
+
+ga_params<- rstan::extract(test_1_comb_ga)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ga_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ga_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ga_params$x[,i]),0.025)
+}
+y_mat_1<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat_1[i,1]=median(plogis(ga_params$a_yr1[,i]))
+  y_mat_1[i,2]=quantile(plogis(ga_params$a_yr1[,i]),0.975)
+  y_mat_1[i,3]=quantile(plogis(ga_params$a_yr1[,i]),0.025)
+}
+
+y_mat_2<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  y_mat_2[i,1]=median(plogis(ga_params$a_yr2[,i]))
+  y_mat_2[i,2]=quantile(plogis(ga_params$a_yr2[,i]+ga_params$s),0.975)
+  y_mat_2[i,3]=quantile(plogis(ga_params$a_yr2[,i]+ga_params$s),0.025)
+}
+
+comp_plot_SS_comb(ts1=rvc_ts[[4]],ts2=reef_ts[[4]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Gray Angelfish',GZ='Key Largo')
+
+
+####Separate state - gray angelfish
+test_1_sep_ga<- rstan::stan(model_code = logit_test_SS_sep, data = list(y2 = gray_angel_reef$occ, 
+                                                                          N_reef = nrow(gray_angel_reef),
+                                                                          N_hab2 = length(unique(gray_angel_reef$hab_class)),
+                                                                          hab_class2 =as.numeric(factor(gray_angel_reef$hab_class)),
+                                                                          N_yr2 =length(unique(gray_angel_reef$year)),
+                                                                          year_id2=as.numeric(factor(gray_angel_reef$year)),
+                                                                          yr_index2=sort(unique(as.numeric(factor(gray_angel_reef$year)))),
+                                                                          site=as.numeric(factor(gray_angel_reef$geogr)),
+                                                                          N_site=length(unique(gray_angel_reef$geogr)),
+                                                                          diver=as.numeric(factor(gray_angel_reef$fish_memberid)),
+                                                                          N_dv=length(unique(gray_angel_reef$fish_memberid)),
+                                                                          K=ncol(X),
+                                                                          X=X,
+                                                                          y1 = gray_angel$occ, 
+                                                                          N_rvc = nrow(gray_angel),
+                                                                          N_hab1 = length(unique(gray_angel$HABITAT_CD)),
+                                                                          hab_class1=as.numeric(factor(gray_angel$HABITAT_CD)),
+                                                                          N_yr1 =length(unique(gray_angel$YEAR)),
+                                                                          TT=26,
+                                                                          year_id1=as.numeric(factor(gray_angel$YEAR)),
+                                                                          yr_index1=sort(unique(gray_angel$year_index))),
+                             pars = c("x1","x2",'a_hab1','a_hab2','a_yr1','a_yr2','sd_r1','sd_r2','sd_q1','sd_q2','sd_dv','sd_hab1','sd_hab2','sd_site','beta'),
+                             control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 300, chains = 2, iter = 800, thin = 1)
+
+posterior <- as.array(test_1_sep_ga)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c('beta'),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("beta[1]"))
+mcmc_trace(posterior, pars = c("sd_r"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
+
+ga_params<- rstan::extract(test_1_sep_ga)
+x_mat1<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat1[i,1]=median(plogis(ga_params$x1[,i]))
+  x_mat1[i,2]=quantile(plogis(ga_params$x1[,i]),0.975)
+  x_mat1[i,3]=quantile(plogis(ga_params$x1[,i]),0.025)
+}
+x_mat2<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat2[i,1]=median(plogis(ga_params$x2[,i]))
+  x_mat2[i,2]=quantile(plogis(ga_params$x2[,i]),0.975)
+  x_mat2[i,3]=quantile(plogis(ga_params$x2[,i]),0.025)
+}
+y_mat_1<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat_1[i,1]=median(plogis(ga_params$a_yr1[,i]))
+  y_mat_1[i,2]=quantile(plogis(ga_params$a_yr1[,i]),0.975)
+  y_mat_1[i,3]=quantile(plogis(ga_params$a_yr1[,i]),0.025)
+}
+
+y_mat_2<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  y_mat_2[i,1]=median(plogis(ga_params$a_yr2[,i]))
+  y_mat_2[i,2]=quantile(plogis(ga_params$a_yr2[,i]+ga_params$s),0.975)
+  y_mat_2[i,3]=quantile(plogis(ga_params$a_yr2[,i]+ga_params$s),0.025)
+}
+
+comp_plot_SS_sep(ts1=rvc_ts[[4]],ts2=reef_ts[[4]],x_mat1 = x_mat1,x_mat2 = x_mat2,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Gray Angelfish',GZ='Key Largo')
+
+
+###REEF state space
+gray_angel_reef<- reef_occs[[4]]
+X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=3,nrow=nrow(gray_angel_reef))
+
+test_ga_reef<- rstan::stan(model_code = logit_test_SS_reef, data = list(y = gray_angel_reef$occ, 
+                                                                    N = nrow(gray_angel_reef),
+                                                                    N_hab = length(unique(gray_angel_reef$hab_class)),
+                                                                    hab_class=as.numeric(factor(gray_angel_reef$hab_class)),
+                                                                    N_yr =length(unique(gray_angel_reef$year)),
+                                                                    year_id=as.numeric(factor(gray_angel_reef$year)),
+                                                                    site=as.numeric(factor(gray_angel_reef$geogr)),
+                                                                    N_site=length(unique(gray_angel_reef$geogr)),
+                                                                    diver=as.numeric(factor(gray_angel_reef$fish_memberid)),
+                                                                    N_dv=length(unique(gray_angel_reef$fish_memberid)),
+                                                                    yr_index=sort(as.numeric(unique(factor(gray_angel_reef$year)))),
+                                                                    TT=26,
+                                                                    K=ncol(X),
+                                                                    X=X),
+                          pars = c("x", "a_hab",'a_yr','sigma_hab','sd_r','sd_q','sigma_dv','sigma_site','beta'),
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 100, chains = 4, iter = 500, thin = 1)
+
+posterior <- as.array(test_ga_reef)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('beta[',seq(1:3),']',sep='')),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("beta[1]"))
+mcmc_trace(posterior, pars = c("sd_r"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
+ga_params<- rstan::extract(test_ga_reef)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ga_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ga_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ga_params$x[,i]),0.025)
+}
+y_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat[i,1]=median(plogis(ga_params$a_yr[,i]))
+  y_mat[i,2]=quantile(plogis(ga_params$a_yr[,i]),0.975)
+  y_mat[i,3]=quantile(plogis(ga_params$a_yr[,i]),0.025)
+}
+
+comp_plot_SS_reef(ts=reef_ts[[4]],x_mat = x_mat,y_mat=y_mat,sp='Gray Angelfish',GZ='Key Largo')
+
+
+###RVC state space
+test_ga_rvc<- rstan::stan(model_code = logit_test_SS_rvc, data = list(y = gray_angel$occ, 
+                                                                      N = nrow(gray_angel),
+                                                                      N_hab = length(unique(gray_angel$HABITAT_CD)),
+                                                                      hab_class=as.numeric(factor(gray_angel$HABITAT_CD)),
+                                                                      N_yr =length(unique(gray_angel$YEAR)),
+                                                                      TT=26,
+                                                                      year_id=as.numeric(factor(gray_angel$YEAR)),
+                                                                      yr_index=sort(unique(gray_angel$year_index))),
+                          pars = c("x", "a_hab",'a_yr','sd_q','sd_r'),
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
+
+ga_params<- rstan::extract(test_ga_rvc)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ga_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ga_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ga_params$x[,i]),0.025)
+}
+y_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat[i,1]=median(plogis(ga_params$a_yr[,i]))
+  y_mat[i,2]=quantile(plogis(ga_params$a_yr[,i]),0.975)
+  y_mat[i,3]=quantile(plogis(ga_params$a_yr[,i]),0.025)
+}
+
+comp_plot_SS_rvc(ts=rvc_ts[[4]],x_mat = x_mat,y_mat=y_mat,sp='Gray Angelfish',GZ='Key Largo')
+
+posterior <- as.array(test_1_y_g)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('a_hab[',seq(1:9),']',sep=''),'sd_q','sd_r'),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c(paste('a_yr[',seq(1:23),']',sep=''),'sd_r','sd_q'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:5),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
+
+comp_plot(ts=rvc_ts[[4]],mod_mat = a_mat,sp='Gray Angelfish',GZ='Key Largo')
+
+
+ypos <- Y[!is.na(Y)]
+n<- n[!is.na(n)]
+n_pos <- length(ypos)  #number on non-NA ys
+indx_pos <- which(!is.na(Y), arr.ind = TRUE)  #index on the non-NAs
+col_indx_pos <- as.vector(indx_pos[, "col"])
+row_indx_pos <- as.vector(indx_pos[, "row"])
+ts_pos<- ifelse(row_indx_pos==1,0,1)
+ts_plot(ts=Y,sp='')
 
 test_1_hab<- rstan::stan(model_code = logit_test_hab, data = list(y = blue_angel$occ, 
                                                           N = nrow(blue_angel),N_hab = length(unique(blue_angel$HABITAT_CD)),hab_class=as.numeric(factor(blue_angel$HABITAT_CD)),N_psu = length(unique(blue_angel$psu_id)),psu_id=blue_angel$psu_id), 
@@ -586,23 +1294,61 @@ mcmc_pairs(posterior, pars = c("alpha", "sigma_hab",'alpha_h[1]','alpha_h[2]','a
 mcmc_trace(posterior, pars = c("sd_q"))
 
 
+
+
+
+
+
 test_1_y<- rstan::stan(model_code = logit_test, data = list(y = blue_angel$occ, 
                                                             N = nrow(blue_angel),N_psu = length(unique(blue_angel$psu_id)),N_hab = length(unique(blue_angel$HABITAT_CD)),psu_in_hab=psu_in_hab,hab_class=as.numeric(factor(blue_angel$HABITAT_CD)),psu_id=blue_angel$psu_id), 
                        pars = c("alpha", "alpha_h","alpha_p",'sigma_hab','sigma_psu'),
                        control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
 
-test_1_y<- rstan::stan(model_code = logit_test_yr, data = list(y = blue_angel$occ, 
+test_1_y<- rstan::stan(model_code = logit_test_SS, data = list(y = blue_angel$occ, 
                                                      N = nrow(blue_angel),
                                                      N_hab = length(unique(blue_angel$HABITAT_CD)),
                                                      hab_class=as.numeric(factor(blue_angel$HABITAT_CD)),
-                                                     N_mth = length(unique(blue_angel$MONTH)), 
-                                                     month=as.numeric(factor(blue_angel$MONTH)),
                                                      N_yr =length(unique(blue_angel$YEAR)),
-                                                     year=as.numeric(factor(blue_angel$YEAR))),
-                                                    pars = c("alpha", "a_hab","a_mth",'a_yr','sigma_hab','sigma_mth','sigma_yr'),
-                                                  control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
+                                                     TT=26,
+                                                     year_id=as.numeric(factor(blue_angel$YEAR)),
+                                                     yr_index=sort(unique(blue_angel$year_index))),
+                                                    pars = c("x", "a_hab",'a_yr','sd_q','sd_r'),
+                                                  control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 3000, thin = 10)
 
-blue_angel<- rvc_occurrence(fk_93_18,sp='HOL BERM',GZ=3403) #blue angelfish in key largo
+ba_params<- rstan::extract(test_1_y)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ba_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ba_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ba_params$x[,i]),0.025)
+}
+y_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat[i,1]=median(plogis(ba_params$a_yr[,i]))
+  y_mat[i,2]=quantile(plogis(ba_params$a_yr[,i]),0.975)
+  y_mat[i,3]=quantile(plogis(ba_params$a_yr[,i]),0.025)
+}
+
+comp_plot_SS_rvc(ts=rvc_ts[[1]],x_mat = x_mat,y_mat=y_mat,sp='Blue Angelfish',GZ='Key Largo')
+
+
+posterior <- as.array(test_1_y)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:26),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
+mcmc_trace(posterior, pars = c("sd_r"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
 
 
 test_1_y2<- rstan::stan(model_code = logit_test_yr2, data = list(y = blue_angel$occ, 
@@ -611,8 +1357,17 @@ test_1_y2<- rstan::stan(model_code = logit_test_yr2, data = list(y = blue_angel$
                                                                hab_class=as.numeric(factor(blue_angel$HABITAT_CD)),
                                                                N_yr =length(unique(blue_angel$YEAR)),
                                                                year=as.numeric(factor(blue_angel$YEAR))),
-                       pars = c("alpha", "a_hab",'a_yr','sigma_hab','sigma_yr'),
+                       pars = c("alpha", "a_hab",'sigma_hab','sigma_yr'),
                        control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
+
+test_1_y2<- rstan::stan(model_code = logit_test_yr2, data = list(y = blue_angel$occ, 
+                                                                 N = nrow(blue_angel),
+                                                                 N_hab = length(unique(blue_angel$HABITAT_CD)),
+                                                                 hab_class=as.numeric(factor(blue_angel$HABITAT_CD)),
+                                                                 N_yr =length(unique(blue_angel$YEAR)),
+                                                                 year=as.numeric(factor(blue_angel$YEAR))),
+                        pars = c("alpha", "a_hab",'a_yr','sigma_hab','sigma_yr'),
+                        control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
 
 ba_params<- rstan::extract(test_1_y2)
 a_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
@@ -622,9 +1377,11 @@ for(i in 1:23){
   a_mat[i,3]=quantile(plogis(ba_params$alpha+ba_params$a_yr[,i]),0.025)
 }
 
-comp_plot(ts=occ_ts(blue_angel),mod_mat = a_mat,sp='Blue Angelfish',GZ='Key Largo')
+comp_plot_rvc(ts=rvc_ts[[1]],mod_mat = a_mat,sp='Blue Angelfish',GZ='Key Largo')
 
-gray_angel<- rvc_occurrence(fk_93_18,sp='POM PARU',GZ=3403) #blue angelfish in key largo
+gray_angel<- rvc_occs[[4]] #gray angelfish in key largo
+year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
+gray_angel$year_index=year_index$y.ind[match(gray_angel$YEAR,year_index$yr)]
 
 test_1_y2_g<- rstan::stan(model_code = logit_test_yr2, data = list(y = gray_angel$occ, 
                                                                  N = nrow(gray_angel),
@@ -643,15 +1400,63 @@ for(i in 1:23){
   a_mat[i,3]=quantile(plogis(ga_params$alpha+ga_params$a_yr[,i]),0.025)
 }
 
-comp_plot(ts=occ_ts(gray_angel),mod_mat = a_mat,sp='Gray Angelfish',GZ='Key Largo')
+comp_plot_rvc(ts=rvc_ts[[4]],mod_mat = a_mat,sp='Gray Angelfish',GZ='Key Largo')
 
-gray_angel<- rvc_occurrence(fk_93_18,sp='POM PARU',GZ=3408) #blue angelfish in key west
-test_1_y2_g2<- rstan::stan(model_code = logit_test_yr2, data = list(y = gray_angel$occ, 
-                                                                   N = nrow(gray_angel),
-                                                                   N_hab = length(unique(gray_angel$HABITAT_CD)),
-                                                                   hab_class=as.numeric(factor(gray_angel$HABITAT_CD)),
-                                                                   N_yr =length(unique(gray_angel$YEAR)),
-                                                                   year=as.numeric(factor(gray_angel$YEAR))),
+
+test_ga_rvc<- rstan::stan(model_code = logit_test_SS_rvc, data = list(y = gray_angel$occ, 
+                                                               N = nrow(gray_angel),
+                                                               N_hab = length(unique(gray_angel$HABITAT_CD)),
+                                                               hab_class=as.numeric(factor(gray_angel$HABITAT_CD)),
+                                                               N_yr =length(unique(gray_angel$YEAR)),
+                                                               TT=26,
+                                                               year_id=as.numeric(factor(gray_angel$YEAR)),
+                                                               yr_index=sort(unique(gray_angel$year_index))),
+                       pars = c("x", "a_hab",'a_yr','sd_q','sd_r'),
+                       control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
+
+ga_params<- rstan::extract(test_1_y_g)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ga_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ga_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ga_params$x[,i]),0.025)
+}
+y_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat[i,1]=median(plogis(ga_params$a_yr[,i]))
+  y_mat[i,2]=quantile(plogis(ga_params$a_yr[,i]),0.975)
+  y_mat[i,3]=quantile(plogis(ga_params$a_yr[,i]),0.025)
+}
+
+comp_plot_SS_rvc(ts=rvc_ts[[4]],x_mat = x_mat,y_mat=y_mat,sp='Gray Angelfish',GZ='Key Largo')
+
+posterior <- as.array(test_1_y_g)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c(paste('a_hab[',seq(1:9),']',sep=''),'sd_q','sd_r'),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c(paste('a_yr[',seq(1:23),']',sep=''),'sd_r','sd_q'))
+mcmc_pairs(posterior, pars = c(paste('x[',seq(1:5),']',sep=''),'sd_q','sd_r'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
+
+
+
+
+comp_plot(ts=rvc_ts[[4]],mod_mat = a_mat,sp='Gray Angelfish',GZ='Key Largo')
+
+queen_angel<- rvc_occs[[5]] #queen angelfish in key largo
+test_1_y2_g2<- rstan::stan(model_code = logit_test_yr2, data = list(y = queen_angel$occ, 
+                                                                   N = nrow(queen_angel),
+                                                                   N_hab = length(unique(queen_angel$HABITAT_CD)),
+                                                                   hab_class=as.numeric(factor(queen_angel$HABITAT_CD)),
+                                                                   N_yr =length(unique(queen_angel$YEAR)),
+                                                                   year=as.numeric(factor(queen_angel$YEAR))),
                           pars = c("alpha", "a_hab",'a_yr','sigma_hab','sigma_yr'),
                           control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 400, chains = 4, iter = 2000, thin = 1)
 
@@ -663,14 +1468,14 @@ for(i in 1:23){
   a_mat[i,3]=quantile(plogis(ga_params$alpha+ga_params$a_yr[,i]),0.025)
 }
 
-comp_plot(ts=occ_ts(gray_angel),mod_mat = a_mat,sp='Gray Angelfish',GZ='Key West')
+comp_plot(ts=rvc_ts[[5]],mod_mat = a_mat,sp='Gray Angelfish',GZ='Key West')
 
 posterior <- as.array(test_1_y2_g)
 dimnames(posterior)
 color_scheme_set("viridis")
 mcmc_areas(
   posterior,
-  pars = c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'),
+  pars = c("alpha", paste('a_hab[',seq(1:9),']',sep=''),'sigma_hab','sigma_yr'),
   prob = 0.95, # 80% intervals
   prob_outer = 1, # 99%
   point_est = "median"
@@ -681,9 +1486,49 @@ mcmc_pairs(posterior, pars = c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sig
 mcmc_trace(posterior, pars = c("sd_q"))
 
 
+###test for reef model
+gray_angel_reef<- reef_occs[[4]]
+X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=3,nrow=nrow(gray_angel_reef))
 
+test_1_reef<- rstan::stan(model_code = logit_test_reef, data = list(y = gray_angel_reef$occ, 
+                                                                    N = nrow(gray_angel_reef),
+                                                                    N_hab = length(unique(gray_angel_reef$hab_class)),
+                                                                    hab_class=as.numeric(factor(gray_angel_reef$hab_class)),
+                                                                    N_yr =length(unique(gray_angel_reef$year)),
+                                                                    year=as.numeric(factor(gray_angel_reef$year)),
+                                                                    site=as.numeric(factor(gray_angel_reef$geogr)),
+                                                                    N_site=length(unique(gray_angel_reef$geogr)),
+                                                                    diver=as.numeric(factor(gray_angel_reef$fish_memberid)),
+                                                                    N_dv=length(unique(gray_angel_reef$fish_memberid)),
+                                                                    K=ncol(X),
+                                                                    X=X),
+                           pars = c("alpha", "a_hab",'a_yr','sigma_hab','sigma_yr','sigma_dv','sigma_site','beta'),
+                           control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 100, chains = 4, iter = 500, thin = 1)
 
+ba_params<- rstan::extract(test_1_reef)
+a_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  a_mat[i,1]=median(plogis(ba_params$alpha+ba_params$a_yr[,i]))
+  a_mat[i,2]=quantile(plogis(ba_params$alpha+ba_params$a_yr[,i]),0.975)
+  a_mat[i,3]=quantile(plogis(ba_params$alpha+ba_params$a_yr[,i]),0.025)
+}
 
+comp_plot_reef(ts=occs_ts_reef[[4]][1:23,],mod_mat = a_mat,sp='Blue Angelfish',GZ='Key Largo')
+
+posterior <- as.array(test_1_reef)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c("alpha", paste('a_hab[',seq(1:5),']',sep=''),'sigma_hab','sigma_yr'),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("sd_q"))
 
 mod_1<-"data{
   int<lower=1> N;//number of observations (SSU surveys)

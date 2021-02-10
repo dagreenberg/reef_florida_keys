@@ -177,13 +177,6 @@ REEF_pull <- function(R,GZ,sp,geog){
 } #end function
 
 
-###Ordinal model function
-ord_REEF<- function(data,sp){
-  R<- subset(R,s)
-  clmm2(abundance~1,random=fish_memberid+site4+year,data=data)
-}
-
-
 #Plot function
 TS_plot_MARSS<- function(ts,spp,GZ){
   plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts_comp[[1]]))),max(na.omit(c(ts_comp[[1]])))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
