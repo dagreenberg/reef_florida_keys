@@ -7,20 +7,25 @@ options(mc.cores = parallel::detectCores())
 ####Functions####
 rvc_occurrence = function(x,GZ,sp){
   x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
-  x1= x %>% subset(region.id==GZ)
-  x1= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0))
+  x1= x %>% subset(region.id==GZ) %>% select(SSU_YEAR,SPECIES_CD,everything())
+  x2= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0))
+  zeros = anti_join(x2,x1)
+  zeros[,3:29]<- x1[match(zeros$SSU_YEAR,x1$SSU_YEAR),3:29]
+  x3= rbind(x1,zeros)
+  x3$HAB_CD2<- gsub('\\_.*','',x3$HABITAT_CD)
   rvc_occs<- list()
   for(i in 1:nrow(sp)){
-  x2= subset(x1,SPECIES_CD==sp$rvc_code[i])
-  x3=  x2 %>% dplyr::group_by(SSU_YEAR) %>%
-    dplyr::summarise(NUM.total=sum(NUM),occ=NA) %>% #Sums up the number of counts
-    mutate(occ=ifelse(NUM.total>0,1,0)) %>% arrange(SSU_YEAR) #Also scores presence/absence at the SSU level
-  x3[,4:31]<- x2[match(x3$SSU_YEAR,x2$SSU_YEAR),2:29]
-  x3<- transform(x3,psu_id=match(LAT_LON,unique(LAT_LON)))
-  rvc_occs[[i]]=x3
+    x4= subset(x3,SPECIES_CD==sp$rvc_code[i])
+    x5=  x4 %>% dplyr::group_by(SSU_YEAR) %>%
+      dplyr::summarise(NUM.total=sum(NUM),occ=NA) %>% #Sums up the number of counts
+      mutate(occ=ifelse(NUM.total>0,1,0)) %>% arrange(SSU_YEAR) #Also scores presence/absence at the SSU level
+    x5[,4:32]<- x4[match(x5$SSU_YEAR,x4$SSU_YEAR),2:30]
+    x5<- transform(x5,psu_id=match(LAT_LON,unique(LAT_LON)))
+    rvc_occs[[i]]=x5
   }
   return(rvc_occs)
 }
+
 
 occ_ts_rvc = function(x){ #Takes the output from the previous function
   ts<- list()
@@ -57,7 +62,7 @@ reef_occurrence = function(R,GZ,sp,geog){ #function to trim dataframe and add in
   site_subsets<-TempDat3 %>% group_by(geogr) %>% summarize(n=n_distinct(formid),hab_class=unique(hab_class)) %>% subset(n>=5 & is.na(hab_class)==F) #Calculate surveys per site
 
   TempDat4<- TempDat3 %>% subset(fish_memberid %in% surveyors_trim$fish_memberid) %>% subset(geogr %in% site_subsets$geogr) #Only keep well surveyed sites (n>=5)
-  
+  TempDat4$hab_class2<- gsub('\\_.*','',TempDat4$hab_class)
   for(i in 1:nrow(sp)){
     occ_list[[i]]<- subset(TempDat4,speciesid==sp$speciesid[i]) #Subset out each species in the provided dataframe
   }
@@ -166,7 +171,8 @@ comp_plot_SS_sep = function(ts1,ts2,x_mat1,x_mat2,y_mat1,y_mat2,sp,GZ){
   points(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
   lines(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
   
-  points(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  points(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3
+                                                                               ',alpha.f = 0.8),cex=1.2,lwd=1.2)
   lines(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
   points(y_mat1$median~ts1$YEAR,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
   lines(y_mat1$median~ts1$YEAR,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
@@ -245,6 +251,7 @@ R<-R[-which(R$date=="0000-00-00"),]
 R$date<-ymd(R$date)#put into proper date format
 R<-cbind(R,year=year(R$date))
 R<-cbind(R,month=month(R$date))
+R<-cbind(R,day=day(R$date))
 
 # Remove sites without lat-long (b/c those sites are probably janky anyway)
 R<-filter(R, R$geogr %in% reef_geog$geogid)
@@ -368,6 +375,8 @@ reef_occs<- reef_occurrence(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
 reef_ts<- occ_ts_reef(R,GZ='3403',sp=fish_reef,geog=reef_geog_3403)
 
 
+rep_survs<- R %>% group_by(geogr,month,day,year) %>% summarize(n_survs=n_distinct(formid))
+
 ####Stan model
 logit_test_1<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
@@ -474,6 +483,8 @@ logit_test_rvc<-"data{
   int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
   int<lower=0> N_yr; //number of years
   int<lower=1,upper=N_yr> year[N]; // vector of year
+  int K; // columns in the covariate matrix
+  matrix[N,K] X; // design matrix X
 }
 parameters {
   real alpha; 
@@ -494,13 +505,14 @@ transformed parameters{
   vector[N] eta;
   
   for(n in 1:N){
-    eta[n] = alpha + a_yr[year[n]] + a_hab[hab_class[n]];
+    eta[n] = alpha + a_yr[year[n]] + a_hab[hab_class[n]]+ X[n,]*beta;
   }
 }
 
 model{
   //priors
   alpha ~ normal(0,10);
+  beta ~ normal(0,2)
 
   //standard deviations
   sigma_hab ~ cauchy(0, 5);
@@ -939,7 +951,7 @@ blue_angel_reef<- reef_occs[[1]]
 blue_angel_reef<- subset(blue_angel_reef,year<=2018)
 blue_angel_reef_ts<- reef_ts[[1]]
 
-X<- matrix(data=c(scale(as.numeric(blue_angel_reef$btime)),scale(as.numeric(blue_angel_reef$visibility)),scale(as.numeric(blue_angel_reef$current))),ncol=3,nrow=nrow(blue_angel_reef))
+X<- matrix(data=c(scale(as.numeric(blue_angel_reef$btime)),scale(as.numeric(blue_angel_reef$averagedepth)),scale(as.numeric(blue_angel_reef$visibility)),scale(as.numeric(blue_angel_reef$current))),ncol=4,nrow=nrow(blue_angel_reef))
 
 test_1_comb<- rstan::stan(model_code = logit_test_SS_comb, data = list(y2 = blue_angel_reef$occ, 
                                                                     N_reef = nrow(blue_angel_reef),
@@ -1047,7 +1059,7 @@ dimnames(posterior)
 color_scheme_set("viridis")
 mcmc_areas(
   posterior,
-  pars = c(paste('beta[1]',sep='')),
+  pars = c(paste('lp__',sep='')),
   prob = 0.95, # 80% intervals
   prob_outer = 1, # 99%
   point_est = "median"
@@ -1114,7 +1126,7 @@ dimnames(posterior)
 color_scheme_set("viridis")
 mcmc_areas(
   posterior,
-  pars = c('beta'),
+  pars = c('lp__'),
   prob = 0.95, # 80% intervals
   prob_outer = 1, # 99%
   point_est = "median"
@@ -1159,7 +1171,7 @@ comp_plot_SS_sep(ts1=rvc_ts[[4]],ts2=reef_ts[[4]],x_mat1 = x_mat1,x_mat2 = x_mat
 
 ###REEF state space
 gray_angel_reef<- reef_occs[[4]]
-X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=3,nrow=nrow(gray_angel_reef))
+X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$averagedepth)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=4,nrow=nrow(gray_angel_reef))
 
 test_ga_reef<- rstan::stan(model_code = logit_test_SS_reef, data = list(y = gray_angel_reef$occ, 
                                                                     N = nrow(gray_angel_reef),
@@ -1176,7 +1188,7 @@ test_ga_reef<- rstan::stan(model_code = logit_test_SS_reef, data = list(y = gray
                                                                     K=ncol(X),
                                                                     X=X),
                           pars = c("x", "a_hab",'a_yr','sigma_hab','sd_r','sd_q','sigma_dv','sigma_site','beta'),
-                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 100, chains = 4, iter = 500, thin = 1)
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 500, chains = 4, iter = 1000, thin = 1)
 
 posterior <- as.array(test_ga_reef)
 dimnames(posterior)

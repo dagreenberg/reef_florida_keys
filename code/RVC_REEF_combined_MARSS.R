@@ -6,7 +6,8 @@ library(stringr);library(lubridate);library(rlist)
 
 ####1. Functions ####
 #not in filter
-`%notin%` <- Negate(`%in%`)
+`%notin%`<- Negate(`%in%`)
+
 #geometric mean
 gm_mean<- function(x){
   prod(x)^(1/length(x))
@@ -18,7 +19,6 @@ ssu_density = function(x){
     dplyr::summarise(density=sum(NUM),occ=NA) %>% #Sums up the number of counts
     mutate(occ=ifelse(density>0,1,0)) %>% arrange(PRIMARY_SAMPLE_UNIT,YEAR,STATION_NR) #Also scores presence/absence at the SSU level
 }
-
 
 #Aggregate by PSU (200x200m primary sample location; 1-4 SSUs per PSU)
 #Calculates number of SSUs, the total counts across the PSU, average count per SSU, and occupancy at the PSU level
@@ -178,18 +178,17 @@ REEF_pull <- function(R,GZ,sp,geog){
 
 
 #Plot function
-TS_plot_MARSS<- function(ts,spp,GZ){
-  plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts_comp[[1]]))),max(na.omit(c(ts_comp[[1]])))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
+TS_plot_MARSS_1<- function(ts,spp,GZ){
+  plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts))),max(na.omit(c(ts)))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(spp$commonname,GZ,sep=' '))
   lines(ts[1,]~c(seq(1993,2018)),col='navy')
   points(ts[1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
   lines(ts[2,]~c(seq(1993,2018)),col='darkred')
   points(ts[2,]~c(seq(1993,2018)),col='white',pch=21,bg='darkred',cex=1.2)
   legend(2016,c(max(na.omit(c(ts_comp[[1]])))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
-  
 }
 
 TS_plot_MARSS<- function(ts,sp,GZ,mod){
-  pdf(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
+ # pdf(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
   plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts))),max(na.omit(c(ts)))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(sp,GZ,sep=', '))
   lines(ts[1,]~c(seq(1993,2018)),col='navy',lwd=2)
   points(ts[1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
@@ -204,7 +203,7 @@ TS_plot_MARSS<- function(ts,sp,GZ,mod){
     lines(fit_3$states[2,]~c(seq(1993,2018)),lty=5,lwd=2,col='firebrick')
   }
   legend(2016,c(max(na.omit(c(ts)))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
-  dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
+#dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
 }
 
 occ_plot_MARSS<- function(ts,sp,GZ,mod){
@@ -473,7 +472,7 @@ for(i in 1:length(rvc.green.3403.sp)){
   mars_3403[i,20]=length(na.omit(ts_comp[[i]][1,]))
   mars_3403[i,21]=length(na.omit(ts_comp[[i]][2,]))
   
-  TS_plot_MARSS(ts=ts_comp[[i]],sp=spp$commonname,GZ='Key Largo',mod=mars_3403[i,19])
+  TS_plot_MARSS(ts=ts_comp[[i]],sp=spp$commonname,GZ='Key Largo',mod=mars_3403$mod[i])
   dev.off()
   
   print(i)
@@ -494,9 +493,7 @@ for(i in 1:length(rvc.green.3403.sp)){
   
   Z_1=factor(c('rvc_reef','rvc_reef')) #Common state process for both time-series
   Z_2=factor(c('rvc','reef')) #Different state process for each time-series
-  R_matrix[[i]]=matrix(list(0),nrow(ts_comp[[i]]),nrow(ts_comp[[i]])) #create empty Obs. error matrix
-  diag(R_matrix[[i]])=c(rep("rvc",times=1),rep("reef",times=1))
-  
+
   #tier 1 - common state process
   tier_1<- list(Z=Z_1,
                 Q = 'diagonal and equal',
@@ -542,7 +539,7 @@ for(i in 1:length(rvc.green.3403.sp)){
   mars_3403[i,20]=length(na.omit(ts_comp[[i]][1,]))
   mars_3403[i,21]=length(na.omit(ts_comp[[i]][2,]))
   
-  TS_plot_MARSS(ts=ts_comp[[i]],sp=spp$commonname,GZ='Key Largo',mod=mars_3403[i,19])
+  TS_plot_MARSS(ts=ts_comp[[i]],sp=spp$commonname,GZ='Key Largo',mod=2)
   dev.off()
   
   print(i)
@@ -3323,10 +3320,10 @@ for(i in 51:100){
   m<- match(unique(REEF_3403_green[[i]]$sciName),REEF.green.exp.3403.sp)
   if(is.na(m)==F){
     lines(c(n.occ/tot.surveys)~year,data=REEF_3403_exp_green[[m]],lwd=2,col='coral4')
+    
     points(c(n.occ/tot.surveys)~year,data=REEF_3403_exp_green[[m]],pch=21,col='white',bg='coral4',cex=1.5)
     lines(c(occ.sites/sites.surveyed)~year,data=REEF_3403_exp_green[[m]],lwd=2,col='darkgoldenrod4')
     points(c(occ.sites/sites.surveyed)~year,data=REEF_3403_exp_green[[m]],pch=21,col='white',bg='darkgoldenrod4',cex=1.5)
-    
   }
   
   m2<- match(unique(REEF_3403_green[[i]]$sciName),fish_reef$scientificname)
