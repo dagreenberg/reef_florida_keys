@@ -230,17 +230,17 @@ logit_test_rvc<-"data{
 parameters {
   real alpha; 
   //global intercept
-  real beta;
-  //effect of covariates
+
+  vector[K] beta;
+  //depth covariate
   
   //deviations from intercept
-  real a_hab[N_hab]; //deviation between habitats
-  real a_yr[N_yr]; //deviation between years
+  vector[N_hab] z_hab; //deviation between habitats
+  vector[N_yr] z_yr; //deviation between years
  
-  
   //st dev on the deviations
-  real<lower = 0> sigma_hab; //sigma on habitat
-  real<lower = 0> sigma_yr; //sigma on year
+  real<lower = 0> tau_hab; //sigma on habitat
+  real<lower = 0> tau_yr; //sigma on year
 }
 
 model{
@@ -248,17 +248,14 @@ model{
   alpha ~ normal(0,10);
   beta ~ normal(0,2);
 
-  //standard deviations
-  sigma_hab ~ cauchy(0, 5);
-  sigma_yr ~ cauchy(0, 5);
-  
   //varying intercepts
-  a_hab ~ normal(0, sigma_hab);
-  a_yr ~student_t(5, 0, sigma_yr);
+  z_hab ~ normal(0,3);
+  z_yr ~ student_t(5, 0, 3);
+  tau_yr ~ cauchy(0,3);
+  tau_hab ~ cauchy(0,3);
   
-  for(i in 1:N){
-    y[i] ~ bernoulli_logit(alpha + a_yr[year[i]] + a_hab[hab_class[i]]+ X[i,]*beta);
-  }
+  y ~ bernoulli_logit(alpha + z_yr[year]*tau_yr + z_hab[hab_class]*tau_hab + X*beta);
+
 }
 "
 
@@ -283,32 +280,28 @@ parameters {
   real alpha;
   
   //deviations from intercept
-  real a_yr[N_yr]; //deviation between years
-  real a_dv[N_dv]; //deviation between divers
-  real dev_hab[N_hab]; //deviation between habitats
-  real dev_site[N_site]; ///deviation between sites
+  vector[N_yr] z_yr; //deviation between years
+  vector[N_dv] z_dv; //deviation between divers
+  vector[N_hab] z_hab; //deviation between habitats
+  vector[N_site] z_site; ///deviation between sites
   
   //covariates for effort variables
   vector[K] beta;
   
   //st dev on the deviations
-  real<lower = 0> sigma_hab;
-  real<lower = 0> sigma_yr;
-  real<lower = 0> sigma_site;
-  real<lower = 0> sigma_dv;
+  real<lower = 0> tau_hab;
+  real<lower = 0> tau_yr;
+  real<lower = 0> tau_site;
+  real<lower = 0> tau_dv;
 }
 
 transformed parameters{
-  real a_hab[N_hab]; //deviation between habitats
-  real a_site[N_site]; //deviation between sites
+  vector[N_hab] a_hab; //deviation between habitats
+  vector[N_site] a_site; //deviation between sites
   
- for(h in 1:N_hab){
-    a_hab[h] = alpha + dev_hab[h];
-  }
+  a_hab = alpha + z_hab*tau_hab;
   
-  for(s in 1:N_site){
-    a_site[s] = a_hab[site_hab[s]] + dev_site[s];
-  }
+  a_site = a_hab[site_hab] + z_site*tau_site;
  
 }
 
@@ -318,25 +311,96 @@ model{
   beta ~ normal(0,2);
   
   //standard deviations
-  sigma_hab ~ cauchy(0, 5);
-  sigma_yr ~ cauchy(0, 5);
-  sigma_site ~ cauchy(0, 5);
-  sigma_dv ~ cauchy(0, 5);
+  tau_hab ~ cauchy(0, 5);
+  tau_yr ~ cauchy(0, 5);
+  tau_site ~ cauchy(0, 5);
+  tau_dv ~ cauchy(0, 5);
   
   //varying intercepts
-  dev_hab ~ normal(0, sigma_hab);
-  a_yr ~ student_t(5, 0, sigma_yr);
-  dev_site ~ normal(0, sigma_site);
-  a_dv ~ normal(0, sigma_dv);
+  z_hab ~ normal(0, 5);
+  z_yr ~ student_t(5, 0, 5);
+  z_site ~ normal(0, 5);
+  z_dv ~ normal(0, 5);
   
-  for(i in 1:N){
-    y[i] ~ bernoulli_logit(a_site[site[i]] + a_yr[year[i]] +  a_dv[diver[i]] + X[i,]*beta);
-  }
+  y ~ bernoulli_logit(a_site[site] + z_yr[year]*tau_yr +  z_dv[diver]*tau_dv + X*beta);
 }
 "
 
 
 ####Batch through species and retain the mean estimate (intercept) from both models
+rvc_mod_binom<- list()
+rvc_mod_nbinom<- list()
+
+reef_mod<- list()
+rvc_mod<- list()
+ts_comp<- list()
+library(glmmTMB); library(MARSS)
+mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,tier1.AICc=NA,tier2.AICc=NA,Q1=NA,Q2.rvc=NA,Q2.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,mAbund.rvc=NA,mAbund.reef=NA,sdAbund.rvc=NA,sdAbund.reef=NA,dAIC1=NA,dAIC2=NA,mod=NA,years.rvc=NA,years.reef=NA)
+for(i in 1:nrow(fish_reef)){
+  spp_rvc<- rvc_occs[[i]]
+  spp_reef<- reef_occs[[i]]
+  
+  rvc_mod[[i]]<-glmmTMB(occ~scale(DEPTH) +(1|HAB_CD2)+(1|YEAR),family = binomial,data=spp_rvc)
+  reef_mod[[i]]<-glmmTMB(occ~scale(as.numeric(btime))+scale(as.numeric(averagedepth))+scale(as.numeric(visibility))+scale(as.numeric(current))+(1|hab_class2)+(1|hab_class2:geogr)+(1|year),family = binomial,data=spp_reef)
+  
+  rvc_years<- data.frame(year=as.numeric(rownames(coef(rvc_mod[[i]])$cond$YEAR)),year_prob=coef(rvc_mod[[i]])$cond$YEAR[,1])
+  rvc_years<- as.data.frame(complete(rvc_years,year=seq(1993,2018)))
+
+  colnames(ts_comp[[i]])<- rvc_years$year
+  ts_comp[[i]]<- t(rvc_years$year_prob)
+  ts_comp[[i]]<- rbind(ts_comp[[i]],t(coef(reef_mod[[i]])$cond$year[,1]))
+  
+  Z_1=factor(c('rvc_reef','rvc_reef')) #Common state process for both time-series
+  Z_2=factor(c('rvc','reef')) #Different state process for each time-series
+  
+  #tier 1 - common state process
+  tier_1<- list(Z=Z_1,
+                Q = 'diagonal and equal',
+                R = 'diagonal and unequal',
+                U = 'zero',
+                A = 'scaling',
+                x0 = 'equal',
+                tinitx=0)
+  #tier 3
+  tier_3<- list(Z=Z_2,
+                Q = 'diagonal and unequal',
+                R = 'diagonal and unequal',
+                U = 'zero',
+                A = 'scaling',
+                x0 = 'unequal',
+                tinitx=0)
+  
+  fit_1<-  MARSS(ts_comp[[i]], model = tier_1,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
+  fit_3<-  MARSS(ts_comp[[i]], model = tier_3,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1),method='kem') 
+  params.1<- MARSSparamCIs(fit_1)
+  params.3<- MARSSparamCIs(fit_3)
+  
+  mars_3403[i,1]=spp$commonname
+  mars_3403[i,2]=ifelse(is.null(fit_1$errors)==T,1,0)
+  mars_3403[i,3]=ifelse(is.null(fit_3$errors)==T,1,0)  
+  mars_3403[i,4]=fit_1$AICc
+  mars_3403[i,5]=fit_3$AICc  
+  mars_3403[i,6]=params.1$parMean[4]
+  mars_3403[i,7]=params.3$parMean[3]
+  mars_3403[i,8]=params.3$parMean[4]
+  mars_3403[i,9]=params.1$parMean[2]
+  mars_3403[i,10]=params.1$parMean[3] 
+  mars_3403[i,11]=params.3$parMean[1]
+  mars_3403[i,12]=params.3$parMean[2]
+  mars_3403[i,13]=10^(mean(na.omit(ts_comp[[i]][1,])))
+  mars_3403[i,14]=10^(mean(na.omit(ts_comp[[i]][2,])))
+  mars_3403[i,15]=sd(10^(na.omit(ts_comp[[i]][1,])))
+  mars_3403[i,16]=sd(10^(na.omit(ts_comp[[i]][2,])))
+  mars_3403[i,17]=mars_3403[i,4]-min(mars_3403[i,4:5])
+  mars_3403[i,18]=mars_3403[i,5]-min(mars_3403[i,4:5])
+  if(mars_3403[i,17]==0){mars_3403[i,19]=1}
+  if(mars_3403[i,18]==0){mars_3403[i,19]=2}
+  mars_3403[i,20]=length(na.omit(ts_comp[[i]][1,]))
+  mars_3403[i,21]=length(na.omit(ts_comp[[i]][2,]))
+  
+  TS_plot_MARSS(ts=ts_comp[[i]],sp=fish_reef$commonname[i],GZ='Key Largo',mod=2)
+
+}
 for(i in 1:nrow(fish_reef)){
   spp_rvc<- rvc_occs[[i]]
   spp_reef<- reef_occs[[i]]
@@ -344,8 +408,15 @@ for(i in 1:nrow(fish_reef)){
   X_rvc<- matrix(data=c(scale(as.numeric(spp_rvc$DEPTH))))
   X_reef<- matrix(data=c(scale(as.numeric(spp_reef$btime)),scale(as.numeric(spp_reef$visibility)),scale(as.numeric(spp_reef$current)),scale(as.numeric(spp_reef$averagedepth))),ncol=4,nrow=nrow(spp_reef))
   
+  rvc_glmmtmb<- glmmTMB(occ~DEPTH +(1|HAB_CD2)+(1|YEAR),family = binomial,data=spp_rvc)
+  rvc_glmmtmb_abun<- glmmTMB(NUM.total~DEPTH +(1|HAB_CD2)+(1|YEAR),family = nbinom1,data=spp_rvc)
   
-  rvc_mod<- rstan::stan(model_code = logit_test_rvc, data = list(y = spp_rvc$occ, 
+  
+  rvc_glmmtmb_abun<- glmmTMB(NUM.total~DEPTH +(1|HAB_CD2)+(1|YEAR),ziformula=~1,family = nbinom1,data=spp_rvc)
+  
+  rvc_glmmtmb_abun_zip<- glmmTMB(NUM.total~DEPTH +(1|HAB_CD2)+(1|YEAR),ziformula=~.,family = poisson,data=spp_rvc)
+  
+  rvc_mod[[i]]<- rstan::stan(model_code = logit_test_rvc, data = list(y = spp_rvc$occ, 
                                                                    N = nrow(spp_rvc),
                                                                    N_hab = length(unique(spp_rvc$HAB_CD2)),
                                                                    hab_class=as.numeric(factor(spp_rvc$HAB_CD2)),
@@ -353,10 +424,10 @@ for(i in 1:nrow(fish_reef)){
                                                                    year=as.numeric(factor(spp_rvc$YEAR)),
                                                                    X=X_rvc,
                                                                    K=ncol(X_rvc)),
-                          pars = c("alpha", "a_hab",'sigma_hab','sigma_yr','a_yr','beta'),
-                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 200, chains = 4, iter = 700, thin = 1)
+                          pars = c("alpha", "z_hab",'tau_hab','tau_yr','z_yr','beta'),
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 200, chains = 4, iter = 800, thin = 1)
   
-  reef_mod<- rstan::stan(model_code = logit_test_reef, data = list(y = spp_reef$occ, 
+  reef_mod[[i]]<- rstan::stan(model_code = logit_test_reef, data = list(y = spp_reef$occ, 
                                                                       N = nrow(spp_reef),
                                                                       N_hab = length(unique(spp_reef$hab_class2)),
                                                                       hab_class=as.numeric(factor(spp_reef$hab_class2)),
@@ -369,8 +440,8 @@ for(i in 1:nrow(fish_reef)){
                                                                       N_dv=length(unique(spp_reef$fish_memberid)),
                                                                       K=ncol(X_reef),
                                                                       X=X_reef),
-                            pars = c("alpha",'a_yr','dev_hab','sigma_hab','sigma_yr','sigma_dv','sigma_site','beta'),
-                            control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 200, chains = 4, iter = 700, thin = 1)
+                            pars = c("alpha",'z_yr','z_hab','tau_hab','tau_yr','tau_dv','tau_site','beta'),
+                            control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 200, chains = 4, iter = 800, thin = 1)
   
 }
 

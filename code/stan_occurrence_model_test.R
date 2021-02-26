@@ -21,6 +21,7 @@ rvc_occurrence = function(x,GZ,sp){
       mutate(occ=ifelse(NUM.total>0,1,0)) %>% arrange(SSU_YEAR) #Also scores presence/absence at the SSU level
     x5[,4:32]<- x4[match(x5$SSU_YEAR,x4$SSU_YEAR),2:30]
     x5<- transform(x5,psu_id=match(LAT_LON,unique(LAT_LON)))
+    x5$NUM.total<- round(x5$roun)
     rvc_occs[[i]]=x5
   }
   return(rvc_occs)
@@ -537,11 +538,14 @@ logit_test_SS_rvc<-"data{
   int N_yr; //number of years
   int yr_index[N_yr]; //index of years
   int<lower=1,upper=N_yr> year_id[N]; // vector of year ids
+  int K; // columns in the covariate matrix
+  matrix[N,K] X; // design matrix X
 }
 parameters {
   //global intercept
   real x0;
   real x[TT];
+  real beta;
   
   //deviations from intercept
   real a_hab[N_hab]; //deviation between habitats
@@ -557,13 +561,14 @@ transformed parameters{
    vector[N] eta;
   
   for(n in 1:N){
-    eta[n] = a_yr[year_id[n]] + a_hab[hab_class[n]];
+    eta[n] = a_yr[year_id[n]] + a_hab[hab_class[n]]+ X[n,]*beta;
   }
 }  
   
 model{
   //priors
   x0 ~ normal(0,10);
+  beta ~ normal(0,2);
   
   //standard deviations
   sd_hab ~ cauchy(0,5);

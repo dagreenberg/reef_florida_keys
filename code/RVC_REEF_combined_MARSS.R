@@ -188,8 +188,8 @@ TS_plot_MARSS_1<- function(ts,spp,GZ){
 }
 
 TS_plot_MARSS<- function(ts,sp,GZ,mod){
- # pdf(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
-  plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts))),max(na.omit(c(ts)))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Counts per survey)'),xlab='Year',main=paste(sp,GZ,sep=', '))
+# pdf(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
+  plot(ts[1,]~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts))),max(na.omit(c(ts)))),col='darkblue',bty='l',ylab=expression('log'[10]*' (Mean counts per survey)'),xlab='Year',main=paste(sp,GZ,sep=', '))
   lines(ts[1,]~c(seq(1993,2018)),col='navy',lwd=2)
   points(ts[1,]~c(seq(1993,2018)),col='white',pch=21,bg='navy',cex=1.2)
   lines(ts[2,]~c(seq(1993,2018)),col='darkred',lwd=2)
@@ -197,12 +197,17 @@ TS_plot_MARSS<- function(ts,sp,GZ,mod){
   if(mod==1){
     lines(fit_1$states[1,]~c(seq(1993,2018)),lty=5,lwd=2,col='slategray')
     lines(fit_1$states[1,]+fit_1$par$A[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='slategray')
+    x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
+    y1<- c(fit_1$states[1,]-fit_1$states.se[1,]*2, rev(fit_1$states[1,]+fit_1$states.se[1,]*2))
+    y2<- c(fit_1$states[1,]+fit_1$par$A[,1]-fit_1$states.se[1,]*2, rev(fit_1$states[1,]+fit_1$par$A[,1]+fit_1$states.se[1,]*2))
+    polygon(x, y1, col = adjustcolor('slategray', alpha = 0.1), border=NA) # Add uncertainty polygon
+    polygon(x, y2, col = adjustcolor('slategray', alpha = 0.1), border=NA) # Add uncertainty polygon
   }
   if(mod==2){
     lines(fit_3$states[1,]~c(seq(1993,2018)),lty=5,lwd=2,col='steelblue')
     lines(fit_3$states[2,]~c(seq(1993,2018)),lty=5,lwd=2,col='firebrick')
   }
-  legend(2016,c(max(na.omit(c(ts)))*1.05),c('RVC','REEF'),text.col=c('navy','darkred'),bty='n')
+  legend(2015,c(max(na.omit(c(ts)))*1.05),c('NOAA surveys','REEF surveys'),text.col=c('navy','darkred'),bty='n')
 #dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
 }
 
@@ -393,7 +398,7 @@ rvc_3408_green<- rlist::list.filter(rvc_trends_3408,length(na.omit(mean_ssu_abun
 
 
 ####5. Creating REEF time-series
-reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403) %>% subset(no.surveys>4) #Only include spur and groove, and isolated marine
+reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403) %>% subset(no.surveys>4) %>% subset(hab_class=='SPGR_LR'|hab_class=='SPGR_HR'|hab_class=='ISOL_MR') #Only include spur and groove, and isolated marine
 summary(reef_geog_3403$hab_class)
 #reef_geog_3404<- subset(reef_3404_pts,is.na(grid_match)==F& n>=5)
 #reef_geog_3408<- subset(reef_3408_pts,is.na(grid_match)==F& n>=5)
@@ -472,6 +477,7 @@ for(i in 1:length(rvc.green.3403.sp)){
   mars_3403[i,20]=length(na.omit(ts_comp[[i]][1,]))
   mars_3403[i,21]=length(na.omit(ts_comp[[i]][2,]))
   
+  par(xpd=T)
   TS_plot_MARSS(ts=ts_comp[[i]],sp=spp$commonname,GZ='Key Largo',mod=mars_3403$mod[i])
   dev.off()
   
