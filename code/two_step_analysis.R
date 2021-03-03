@@ -397,3 +397,97 @@ for(i in 1:nrow(fish_reef)){
   
 }
 write.csv(mars_3403,'GLMM_smoothed_occ_ts_3403.csv')
+
+
+setwd("C:/Users/14388/Desktop/reef_florida_keys_data/abund ts plots feb")
+mars_3403<- data.frame(SP=NA,conv.1=NA,conv.2=NA,tier1.AICc=NA,tier2.AICc=NA,Q1=NA,Q2.rvc=NA,Q2.reef=NA,R1.rvc=NA,R1.reef=NA,R2.rvc=NA,R2.reef=NA,dAIC1=NA,dAIC2=NA,mod=NA,years.rvc=NA,years.reef=NA,rvc.b0=NA,reef.b0=NA,rvc.var.hab=NA,reef.var.hab=NA,rvc.var.yr=NA,reef.var.year=NA,reef.var.site=NA,reef.var.dmy=NA,rvc.b.depth=NA,reef.b.depth=NA,reef.b.btime=NA,reef.b.vis=NA,reef.b.curr=NA,rvc.b.cont=NA,reef.b.cont=NA,rvc.b.isol=NA,reef.b.isol=NA,rvc.b.rubb=NA,reef.b.hubb=NA,rvc.b.sg=NA,reef.b.sg=NA)
+for(i in 1:nrow(fish_reef)){
+  spp_rvc<- rvc_occs[[i]]
+  spp_reef<- reef_occs[[i]]
+  
+  rvc_mod[[i]]<-glmmTMB(NUM.total~scale(DEPTH) +(1|HAB_CD2)+(1|YEAR),family = nbinom1,data=spp_rvc)
+  reef_mod[[i]]<-clmm(abundance~scale(as.numeric(btime))+scale(as.numeric(averagedepth))+scale(as.numeric(visibility))+scale(as.numeric(current))+as.factor(exp)+(1|hab_class2)+(1|hab_class2:geogr)+(1|year)+(1|site_dmy),link='logit',threshold='flexible',data=spp_reef)
+  
+  rvc_years<- data.frame(year=as.numeric(rownames(coef(rvc_mod[[i]])$cond$YEAR)),year_prob=coef(rvc_mod[[i]])$cond$YEAR[,1])
+  rvc_years<- as.data.frame(complete(rvc_years,year=seq(1993,2018)))
+  
+  ts_comp[[i]]<- t(rvc_years$year_prob)
+  ts_comp[[i]]<- rbind(ts_comp[[i]],t(coef(reef_mod[[i]])$cond$year[,1]))
+  colnames(ts_comp[[i]])<- rvc_years$year
+  
+  ts_orig[[i]]<- t(rvc_ts[[i]]$p.occ)
+  ts_orig[[i]]<- rbind(ts_orig[[i]],t(reef_ts[[i]]$p.occ))
+  
+  Z_1=factor(c('rvc_reef','rvc_reef')) #Common state process for both time-series
+  Z_2=factor(c('rvc','reef')) #Different state process for each time-series
+  
+  #tier 1 - common state process
+  tier_1<- list(Z=Z_1,
+                Q = 'diagonal and equal',
+                R = 'diagonal and unequal',
+                U = 'zero',
+                A = 'scaling',
+                x0 = 'equal',
+                tinitx=0)
+  #tier 3
+  tier_3<- list(Z=Z_2,
+                Q = 'diagonal and unequal',
+                R = 'diagonal and unequal',
+                U = 'unequal',
+                A = 'scaling',
+                x0 = 'unequal',
+                tinitx=0)
+  
+  
+  fit_1<-  MARSS(ts_comp[[i]], model = tier_1,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1,allow.degen=FALSE),method='kem')
+  
+  fit_3<-  MARSS(ts_comp[[i]], model = tier_3,control=list(maxit=30000,minit=500,conv.test.slope.tol = 0.1,allow.degen=FALSE),method='kem')
+  params.1<- MARSSparamCIs(fit_1)
+  params.3<- MARSSparamCIs(fit_3)
+  
+  mars_3403[i,1]=fish_reef$commonname[i]
+  mars_3403[i,2]=ifelse(is.null(fit_1$errors)==T,1,0)
+  mars_3403[i,3]=ifelse(is.null(fit_3$errors)==T,1,0)  
+  mars_3403[i,4]=fit_1$AICc
+  mars_3403[i,5]=fit_3$AICc  
+  mars_3403[i,6]=params.1$parMean[4]
+  mars_3403[i,7]=params.3$parMean[3]
+  mars_3403[i,8]=params.3$parMean[4]
+  mars_3403[i,9]=params.1$parMean[2]
+  mars_3403[i,10]=params.1$parMean[3] 
+  mars_3403[i,11]=params.3$parMean[1]
+  mars_3403[i,12]=params.3$parMean[2]
+  mars_3403[i,13]=mars_3403[i,4]-min(mars_3403[i,4:5])
+  mars_3403[i,14]=mars_3403[i,5]-min(mars_3403[i,4:5])
+  if(mars_3403[i,13]==0){mars_3403[i,15]=1}
+  if(mars_3403[i,14]==0){mars_3403[i,15]=2}
+  mars_3403[i,16]=length(na.omit(ts_comp[[i]][1,]))
+  mars_3403[i,17]=length(na.omit(ts_comp[[i]][2,]))
+  mars_3403[i,18]=rvc_mod[[i]]$fit$par[1]
+  mars_3403[i,19]=reef_mod[[i]]$fit$par[1]
+  mars_3403[i,20]=VarCorr(rvc_mod[[i]])$cond$HAB_CD2[1]
+  mars_3403[i,21]=VarCorr(reef_mod[[i]])$cond$hab_class2[1]
+  mars_3403[i,22]=VarCorr(rvc_mod[[i]])$cond$YEAR[1]
+  mars_3403[i,23]=VarCorr(reef_mod[[i]])$cond$year[1]
+  mars_3403[i,24]=VarCorr(reef_mod[[i]])$cond$`hab_class2:geogr`[1]
+  mars_3403[i,25]=VarCorr(reef_mod[[i]])$cond$site_dmy[1]
+  mars_3403[i,26]=fixef(rvc_mod[[i]])$cond[2]
+  mars_3403[i,27]=fixef(reef_mod[[i]])$cond[3]
+  mars_3403[i,28]=fixef(reef_mod[[i]])$cond[2]
+  mars_3403[i,29]=fixef(reef_mod[[i]])$cond[4]
+  mars_3403[i,30]=fixef(reef_mod[[i]])$cond[5]
+  mars_3403[i,31]=ranef(rvc_mod[[i]])$cond$HAB_CD2[1,]
+  mars_3403[i,32]=ranef(reef_mod[[i]])$cond$hab_class2[1,]
+  mars_3403[i,33]=ranef(rvc_mod[[i]])$cond$HAB_CD2[2,]
+  mars_3403[i,34]=ranef(reef_mod[[i]])$cond$hab_class2[2,]
+  mars_3403[i,35]=ranef(rvc_mod[[i]])$cond$HAB_CD2[3,]
+  mars_3403[i,36]=ranef(reef_mod[[i]])$cond$hab_class2[3,]
+  mars_3403[i,37]=ranef(rvc_mod[[i]])$cond$HAB_CD2[4,]
+  mars_3403[i,38]=ranef(reef_mod[[i]])$cond$hab_class2[4,]
+  
+  TS_occ_plot_MARSS(ts1=ts_orig[[i]],ts2=ts_comp[[i]],sp=fish_reef$commonname[i],GZ='Key Largo',mod=mars_3403[i,15])
+  dev.off()
+  print(i)
+  
+}
+write.csv(mars_3403,'GLMM_smoothed_occ_ts_3403.csv')

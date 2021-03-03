@@ -163,29 +163,28 @@ comp_plot_SS_comb = function(ts1,ts2,x_mat,y_mat1,y_mat2,sp,GZ){
 
 comp_plot_SS_sep = function(ts1,ts2,x_mat1,x_mat2,y_mat1,y_mat2,sp,GZ){
   plot(ts1$p.occ~ts1$YEAR,type='n',xlab='Year',ylab='Probability of occurrence',ylim=c(0,1),bty='l',main=paste(sp,GZ,sep=' - '))
-  lines(ts1$p.occ~ts1$YEAR,lwd=2,col='darkblue')
-  points(ts1$p.occ~ts1$YEAR,pch=21,col='darkblue',bg='white',cex=1.5,lwd=1.5)
-  lines(ts2$p.occ~ts2$year,lwd=2,col='darkred')
-  points(ts2$p.occ~ts2$year,pch=21,col='darkred',bg='white',cex=1.5,lwd=1.5)
+  lines(ts1$p.occ~ts1$YEAR,lwd=2,col=adjustcolor('navy',alpha.f=0.5))
+  points(ts1$p.occ~ts1$YEAR,pch=21,col=adjustcolor('navy',alpha.f=0.5),bg='white',cex=1.5,lwd=1.5)
+  lines(ts2$p.occ~ts2$year,lwd=2,col=adjustcolor('darkred',alpha.f=0.5))
+  points(ts2$p.occ~ts2$year,pch=21,col=adjustcolor('darkred',alpha.f=0.5),bg='white',cex=1.5,lwd=1.5)
   
   
-  points(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3',alpha.f = 0.8),cex=1.2,lwd=1.2)
-  lines(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
+  points(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('darkcyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat1$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('darkcyan',alpha.f = 0.8))
   
-  points(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('dodgerblue3
-                                                                               ',alpha.f = 0.8),cex=1.2,lwd=1.2)
-  lines(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('dodgerblue3',alpha.f = 0.8))
-  points(y_mat1$median~ts1$YEAR,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
-  lines(y_mat1$median~ts1$YEAR,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
-  points(y_mat2$median~ts2$year,pch=21,col=adjustcolor('cyan',alpha.f = 0.8),cex=1.2,lwd=1.2)
-  lines(y_mat2$median~ts2$year,lwd=1.5,col=adjustcolor('cyan',alpha.f = 0.8),lty=5)
+  points(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),pch=21,col=adjustcolor('darksalmon',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(x_mat2$median~seq(min(ts1$YEAR),max(ts1$YEAR)),lwd=1.5,col=adjustcolor('darksalmon',alpha.f = 0.8))
+  points(y_mat1$median~ts1$YEAR[complete.cases(ts1$p.occ)],pch=21,col=adjustcolor('dodgerblue4',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat1$median~ts1$YEAR[complete.cases(ts1$p.occ)],lwd=1.5,col=adjustcolor('dodgerblue4',alpha.f = 0.8),lty=5)
+  points(y_mat2$median~ts2$year,pch=21,col=adjustcolor('firebrick4',alpha.f = 0.8),cex=1.2,lwd=1.2)
+  lines(y_mat2$median~ts2$year,lwd=1.5,col=adjustcolor('firebrick4',alpha.f = 0.8),lty=5)
   
   
   x.polygon <- c(seq(min(ts1$YEAR),max(ts1$YEAR)), rev(seq(min(ts1$YEAR),max(ts1$YEAR)))) # Define a polygon x value for adding to a plot
   y1.polygon <- c(x_mat1$l.95, rev(x_mat1$u.95)) # Define a polygon y value for adding to a plot
   y2.polygon <- c(x_mat2$l.95, rev(x_mat2$u.95)) # Define a polygon y value for adding to a plot
-  polygon(x.polygon, y1.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
-  polygon(x.polygon, y2.polygon, col = adjustcolor('dodgerblue3', alpha = 0.1), border=NA) # Add uncertainty polygon
+  polygon(x.polygon, y1.polygon, col = adjustcolor('darkcyan', alpha.f =  1), border=NA) # Add uncertainty polygon
+  polygon(x.polygon, y2.polygon, col = adjustcolor('darksalmon', alpha.f = 1), border=NA) # Add uncertainty polygon
   
 }
 
@@ -759,6 +758,8 @@ logit_test_SS_comb<-"data{
   int<lower=1,upper=N_site> site[N_reef]; // vector of site identities for reef
   int<lower=0> N_dv; //number of divers in reef
   int<lower=1,upper=N_dv> diver[N_reef]; // vector of diver identities for reef
+  int<lower=0> N_dv; //number of divers in reef
+  int<lower=1,upper=N_dv> diver[N_reef]; // vector of diver identities for reef
   int K; // columns in the covariate matrix
   matrix[N_reef,K] X; // design matrix X
 }
@@ -770,12 +771,13 @@ parameters {
   real s;
   
   //deviations from intercept
-  real a_hab1[N_hab1]; //deviation between habitats
-  real a_hab2[N_hab2]; //deviation between habitats
-  real a_yr1[N_yr1]; //deviation between years
-  real a_yr2[N_yr2]; //deviation between years
-  real a_site[N_site]; //deviation between sites
-  real a_dv[N_dv]; //deviation between divers
+  vector[N_hab1] z_hab1; //deviation between habitats
+  vector[N_hab2] a_hab2; //deviation between habitats
+  vector[N_yr1] z_yr1; //deviation in observations between years
+  vector[N_yr2] z_yr2; //deviationin observations between years
+  vector[TT] x_dv; //deviation in state between years
+  vector[N_site] z_site; //deviation between sites
+  vector[N_dv] z_dv; //deviation between divers
   
   
   //st dev on the deviations
@@ -786,6 +788,15 @@ parameters {
   real<lower = 0> sd_q; //sigma on process error
   real<lower = 0> sd_site; //sigma on sites
   real<lower = 0> sd_dv; //sigma on divers
+}
+transformed parameters{
+  vector[TT] x;
+  
+  x[1] ~ x0 + x_dv[1]*sd_q;
+  
+  for(t in 2:TT){
+    x[t] ~x[t-1]+x_dv[t]*sd_q;
+  }
 }
 
 model{
@@ -804,17 +815,15 @@ model{
   sd_site ~ cauchy(0,5);
   
   //varying intercepts
-  a_hab1 ~ normal(0, sd_hab1);
-  a_hab2 ~ normal(0, sd_hab2);
-  a_site ~ normal(0, sd_site);
-  a_dv ~ normal(0, sd_dv);
+  z_hab1 ~ normal(0, 5);
+  z_hab2 ~ normal(0, 5);
+  z_site ~ normal(0, 5);
+  z_dv ~ normal(0, 5);
   
   //state process 
   x[1] ~ normal(x0,sd_q);
   
-  for(t in 2:TT){
-    x[t] ~ normal(x[t-1],sd_q);
-  }
+ 
   
   //observation process for year
   
@@ -943,18 +952,18 @@ model{
 
 ####Combined state - blue angelfish
 
-blue_angel<- rvc_occs[[1]]
-blue_angel_ts<-rvc_ts[[1]]
-blue_angel_reef<- reef_occs[[1]]
+blue_angel<- rvc_occs[[3]]
+blue_angel_ts<-rvc_ts[[3]]
+blue_angel_reef<- reef_occs[[3]]
 
 year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
 blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
 
 
 
-blue_angel_reef<- reef_occs[[1]]
+blue_angel_reef<- reef_occs[[3]]
 blue_angel_reef<- subset(blue_angel_reef,year<=2018)
-blue_angel_reef_ts<- reef_ts[[1]]
+blue_angel_reef_ts<- reef_ts[[3]]
 
 X<- matrix(data=c(scale(as.numeric(blue_angel_reef$btime)),scale(as.numeric(blue_angel_reef$averagedepth)),scale(as.numeric(blue_angel_reef$visibility)),scale(as.numeric(blue_angel_reef$current))),ncol=4,nrow=nrow(blue_angel_reef))
 
@@ -980,7 +989,7 @@ test_1_comb<- rstan::stan(model_code = logit_test_SS_comb, data = list(y2 = blue
                                                                     year_id1=as.numeric(factor(blue_angel$YEAR)),
                                                                     yr_index1=sort(unique(blue_angel$year_index))),
                           pars = c("x",'s','a_hab1','a_hab2','a_yr1','a_yr2','sd_r1','sd_r2','sd_q'),
-                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 500, chains = 4, iter = 2000, thin = 10)
+                          control = list(adapt_delta = 0.99,max_treedepth = 15), warmup = 200, chains = 4, iter = 800, thin = 10)
 
 posterior <- as.array(test_1_comb)
 dimnames(posterior)
@@ -1021,17 +1030,17 @@ for(i in 1:26){
   y_mat_2[i,3]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.025)
 }
 
-comp_plot_SS_comb(ts1=rvc_ts[[1]],ts2=reef_ts[[1]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Blue Angelfish',GZ='Key Largo')
+comp_plot_SS_comb(ts1=rvc_ts[[3]],ts2=reef_ts[[3]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Blue Angelfish',GZ='Key Largo')
 
 #gray angelfish
-gray_angel<- rvc_occs[[4]]
-gray_angel_ts<-rvc_ts[[4]]
-gray_angel_reef<- reef_occs[[4]]
+gray_angel<- rvc_occs[[3]]
+gray_angel_ts<-rvc_ts[[3]]
+gray_angel_reef<- reef_occs[[3]]
 
 year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
 gray_angel$year_index=year_index$y.ind[match(gray_angel$YEAR,year_index$yr)]
-gray_angel_reef<- reef_occs[[4]]
-gray_angel_reef_ts<- reef_ts[[4]]
+gray_angel_reef<- reef_occs[[3]]
+gray_angel_reef_ts<- reef_ts[[3]]
 
 X<- matrix(data=c(scale(as.numeric(gray_angel_reef$btime)),scale(as.numeric(gray_angel_reef$visibility)),scale(as.numeric(gray_angel_reef$current))),ncol=3,nrow=nrow(gray_angel_reef))
 
