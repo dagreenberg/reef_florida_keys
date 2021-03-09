@@ -60,7 +60,7 @@ mod_1<-"data{
   int<lower=0> n_pos; // number of non-NA values
   int<lower=0> col_indx_pos[n_pos]; // col index of non-NA vals
   int<lower=0> row_indx_pos[n_pos]; // row index of non-NA vals
-  int<lower=0> ts_id[n_pos]; // id for the scaling parameter (a)
+  vector[n_pos] ts_id; // id for the scaling parameter (a)
   vector[n_pos] y;
 }
 parameters{
@@ -89,11 +89,10 @@ model{
   for(t in 1:TT){
     pro_dev[t] ~ normal(0, sd_q);
   }
-  
-  
   for(i in 1:n_pos){
-    y[i] ~ normal(x[col_indx_pos[i]]+(a*ts_id[i]), sd_r[row_indx_pos[i]]);
+   y[i] ~ normal(x[col_indx_pos[i]]+(a*ts_id[i]), sd_r[row_indx_pos[i]]);
   }
+   
 }
 generated quantities{
   vector[n_pos] log_lik;
