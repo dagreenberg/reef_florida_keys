@@ -843,20 +843,20 @@ for(i in 1:nrow(fish_reef_trim)){
   mars_3403[i,24]=reef_mod[[i]]$ST$geogr[1]^2
   mars_3403[i,25]=reef_mod[[i]]$ST$site_dmy[1]^2
   mars_3403[i,26]=reef_mod[[i]]$ST$fish_memberid[1]^2
-  mars_3403[i,27]=fixef(rvc_mod[[i]])$cond[2]
+  mars_3403[i,27]=glmmTMB::fixef(rvc_mod[[i]])$cond[2]
   mars_3403[i,28]=reef_mod[[i]]$beta[2]
   mars_3403[i,29]=reef_mod[[i]]$beta[1]
   mars_3403[i,30]=reef_mod[[i]]$beta[3]
   mars_3403[i,31]=reef_mod[[i]]$beta[4]
   mars_3403[i,32]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[1,]
-  mars_3403[i,33]=ranef(reef_mod[[i]])$hab_class2[1,]
+  mars_3403[i,33]=ordinal::ranef(reef_mod[[i]])$hab_class2[1,]
   mars_3403[i,34]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[2,]
-  mars_3403[i,35]=ranef(reef_mod[[i]])$hab_class2[2,]
+  mars_3403[i,35]=ordinal::ranef(reef_mod[[i]])$hab_class2[2,]
   mars_3403[i,36]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[3,]
-  mars_3403[i,37]=ranef(reef_mod[[i]])$hab_class2[3,]
+  mars_3403[i,37]=ordinal::ranef(reef_mod[[i]])$hab_class2[3,]
   mars_3403[i,38]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[4,]
-  mars_3403[i,39]=ranef(reef_mod[[i]])$hab_class2[4,]
-  mars_3403[i,40]=ranef(reef_mod[[i]])$hab_class2[4,]
+  mars_3403[i,39]=ordinal::ranef(reef_mod[[i]])$hab_class2[4,]
+  mars_3403[i,40]=ordinal::ranef(reef_mod[[i]])$hab_class2[4,]
   mars_3403[i,41]=reef_mod[[i]]$beta[5]
   
   TS_stan_plot_abund_MARSS(ts1=ts_orig[[i]],ts2=ts_comp[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod=mars_3403[i,6])

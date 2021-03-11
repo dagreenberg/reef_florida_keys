@@ -532,7 +532,7 @@ parameters {
   //global intercept
   real x0;
   vector[K] beta;
-  real recip_phi;
+  real<lower = 0> recip_phi;
   
   //deviations from intercept
   vector[N_hab] z_hab; //deviation between habitats
@@ -588,9 +588,9 @@ model{
 }
 "
 
-logit_test_reef<-"data{
+ord_test_reef<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
-  int y[N]; //presence or absence on each survey
+  int y[N]; //abundance category for each survey
   int<lower=0> N_hab; //number of habitat classes
   int<lower=1,upper=N_hab> hab_class[N]; // vector of habitat class identities
   int<lower=0> N_site; //number of sites
@@ -599,13 +599,16 @@ logit_test_reef<-"data{
   int<lower=1,upper=N_dv> diver[N]; // vector of diver identities
   int<lower=0> N_yr; //number of years
   int<lower=1,upper=N_yr> year[N]; // vector of year
+  int<lower=0> N_dmy; //number of day-month-year site samples
+  int<lower=1,upper=N_yr> dmy[N]; // vector of day-month-year site samples
   int K; // columns in the covariate matrix
   matrix[N,K] X; // design matrix X
-  
+  int J; //ordinal levels
 }
 parameters {
-  //global intercept
-  real alpha;
+  ordered[J-1] c; //cutpoints
+  real<lower = 0> c_sigma; //sigma for cutpoints
+  real c_mu; //mean for cutpoints
   
   //deviations from intercept
   real a_hab[N_hab]; //deviation between habitats
@@ -621,6 +624,8 @@ parameters {
   real<lower = 0> sigma_yr;
   real<lower = 0> sigma_site;
   real<lower = 0> sigma_dv;
+  real<lower = 0> sigma_dmy;
+  
 }
 
 transformed parameters{
@@ -648,9 +653,9 @@ model{
   a_site ~ normal(0, sigma_site);
   a_dv ~ normal(0, sigma_dv);
  
-  for(i in 1:N){
-    y[i] ~ bernoulli_logit(eta[i]);
-  }
+ 
+  y ~ ordered_logistic(mu,c);
+  
 }
 "
 
@@ -937,7 +942,7 @@ model{
 
 ####Combined state - blue angelfish
 
-blue_angel<- rvc_occs[[1]]
+blue_angel<- rvc_occs[[3]]
 
 year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
 blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
@@ -1005,7 +1010,7 @@ year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
 blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
 X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
 
-test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_angel$NUM.total, 
+test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_angel$NUM.total2, 
                                                                 N = nrow(blue_angel),
                                                                 N_hab = length(unique(blue_angel$HAB_CD2)),
                                                                 hab_class=as.numeric(factor(blue_angel$HAB_CD2)),
@@ -1019,4 +1024,21 @@ test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_ange
                           control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 1000, thin = 1)
 
 shinystan::launch_shinystan(test_nb_rvc)
+
+
+##Reef ordinal model
+
+library(brms)
+test<- brm(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
+               data=reef_occs[[3]],
+               family=cumulative("logit"),
+               prior = c(prior(normal(0,10), "Intercept")),
+               control = list(adapt_delta = 0.98),
+               cores=6,
+               save_all_pars = T,
+               warmup = 400, iter = 1000, chains = 2)
+
+make_stancode(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
+              data=reef_occs[[3]],
+              family=cumulative("logit"))
 
