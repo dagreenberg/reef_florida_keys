@@ -865,3 +865,91 @@ for(i in 1:nrow(fish_reef_trim)){
   
 }
 write.csv(mars_3403,'GLMM_smoothed_abund_ts_3403.csv')
+
+#exploratory plots
+plot(mars_3403$prop.sd.m2.rvc~rep(1,nrow(mars_3403)),xlim=c(1,1.2),bty='l',xaxt='n',ylab='Proportion of process error',type='n',xlab='')
+jitter_1<- jitter(rep(0,nrow(mars_3403)),amount=0.02)
+jitter_2<- jitter(rep(0,nrow(mars_3403)),amount=0.02)
+for(i in 1:nrow(mars_3403)){
+  lines(c(mars_3403$prop.sd.m2.rvc[i],mars_3403$prop.sd.m2.reef[i])~c(1.05+jitter_1[i],1.15+jitter_2[i]),lwd=2,col=adjustcolor('plum4',alpha.f=0.6))
+}
+points(mars_3403$prop.sd.m2.rvc~c(1.05+jitter_1),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m2.reef~c(1.15+jitter_2),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+mtext(side=1,at=c(1.05,1.15),c('RVC','REEF'),line=1)
+
+mars_3403$prop_diff<- mars_3403$prop.sd.m2.reef-mars_3403$prop.sd.m2.rvc
+mars_3403$prop_factor<- mars_3403$prop.sd.m2.reef/mars_3403$prop.sd.m2.rvc
+hist(mars_3403$prop_diff,breaks=30,main='Difference in proportion of process error (REEF-RVC)',xlab='Diff. in proportion of process error')
+hist(mars_3403$prop_factor,breaks=30,main='Difference in proportion of process error (REEF-RVC)',xlab='Diff. in proportion of process error')
+
+par(xpd=T)
+plot(log10(mars_3403$rvc.b0)~log10(mars_3403$reef.b0),bty='l',ylab='log10(Mean counts per RVC survey)',type='n',xlab='log10(Mean counts per REEF survey)')
+points(log10(mars_3403$rvc.b0)~log10(mars_3403$reef.b0),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+text(jitter(log10(mars_3403$reef.b0),1),jitter(log10(mars_3403$rvc.b0),1),fish_reef_trim$commonname)
+b0_mat<- subset(mars_3403,log10(mars_3403$reef.b0)>-2)
+cor(b0_mat$rvc.b0,b0_mat$reef.b0,use='pairwise.complete.obs')
+
+plot(mars_3403$prop.sd.m2.rvc~log10(mars_3403$rvc.b0),bty='l',ylab='Proportion of process error',type='n',xlab='log10(Mean counts per survey)',xlim=c(-2,1.5))
+points(mars_3403$prop.sd.m2.rvc~log10(mars_3403$rvc.b0),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m2.reef~log10(mars_3403$reef.b0),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+legend(1.2,1,c("RVC surveys","REEF surveys"),text.col=c('darkblue','darkred'),bty='n')
+rvc<- lm(qlogis(mars_3403$prop.sd.m2.rvc)~log10(mars_3403$rvc.b0))
+reef<- lm(qlogis(mars_3403$prop.sd.m2.reef)~log10(mars_3403$reef.b0))
+
+plot(mars_3403$prop.sd.m2.rvc~log10(fish_reef_trim$size),bty='l',ylab='Proportion of process error',type='n',xlab='log10(Body size)')
+points(mars_3403$prop.sd.m2.rvc~log10(fish_reef_trim$size),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m2.reef~log10(fish_reef_trim$size),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+legend(2,1,c("RVC surveys","REEF surveys"),text.col=c('darkblue','darkred'),bty='n')
+cor(qlogis(mars_3403$prop.sd.m2.rvc),log10(fish_reef_trim$size),use='pairwise.complete.obs')
+cor(qlogis(mars_3403$prop.sd.m2.reef),log10(fish_reef_trim$size),use='pairwise.complete.obs')
+
+plot(mars_3403$prop.sd.m2.rvc~fish_reef_trim$ecol.FoodTroph,bty='l',ylab='Proportion of process error',type='n',xlab='log10(Body size)')
+points(mars_3403$prop.sd.m2.rvc~fish_reef_trim$ecol.FoodTroph,cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m2.reef~fish_reef_trim$ecol.FoodTroph,cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+legend(2,1,c("RVC surveys","REEF surveys"),text.col=c('darkblue','darkred'),bty='n')
+
+plot(mars_3403$prop.sd.m2.rvc~log10(mars_3403$rvc.b0),bty='l',ylab='Proportion of process error',type='n',xlab='log10(Mean counts per survey)',xlim=c(-2,1.5))
+points(mars_3403$prop.sd.m2.rvc~log10(mars_3403$rvc.b0),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m2.reef~log10(mars_3403$reef.b0),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+legend(1.2,1,c("RVC surveys","REEF surveys"),text.col=c('darkblue','darkred'),bty='n')
+
+plot(mars_3403$prop.sd.m2.rvc~mars_3403$prop.sd.m1.rvc,bty='l',ylab='Proportion of process error (M2)',type='n',xlab='Proportion of process error (M1)')
+points(mars_3403$prop.sd.m2.rvc~mars_3403$prop.sd.m1.rvc,cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+lines(c(seq(0,1,length.out=100))~c(seq(0,1,length.out=100)),lty=5)
+
+plot(mars_3403$prop.sd.m2.reef~mars_3403$prop.sd.m1.reef,bty='l',ylab='Proportion of process error (M2)',type='n',xlab='Proportion of process error (M1)')
+points(mars_3403$prop.sd.m2.reef~mars_3403$prop.sd.m1.reef,cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+lines(c(seq(0,1,length.out=100))~c(seq(0,1,length.out=100)),lty=5)
+
+##shared state
+mars_3403$prop_diff_m1<- mars_3403$prop.sd.m1.reef-mars_3403$prop.sd.m1.rvc
+mars_3403$prop_factor_m1<- mars_3403$prop.sd.m1.reef/mars_3403$prop.sd.m1.rvc
+hist(mars_3403$prop_diff_m1,breaks=30,main='Difference in proportion of process error (REEF-RVC)',xlab='Diff. in proportion of process error')
+hist(mars_3403$prop_factor_m1,breaks=30,main='Difference in proportion of process error (REEF-RVC)',xlab='Diff. in proportion of process error')
+
+plot(mars_3403$prop.sd.m1.rvc~rep(1,nrow(mars_3403)),xlim=c(1,1.2),bty='l',xaxt='n',ylab='Proportion of process error',type='n',xlab='',ylim=c(0,0.85))
+jitter_1<- jitter(rep(0,nrow(mars_3403)),amount=0.02)
+jitter_2<- jitter(rep(0,nrow(mars_3403)),amount=0.02)
+for(i in 1:nrow(mars_3403)){
+  lines(c(mars_3403$prop.sd.m1.rvc[i],mars_3403$prop.sd.m1.reef[i])~c(1.05+jitter_1[i],1.15+jitter_2[i]),lwd=2,col=adjustcolor('plum4',alpha.f=0.6))
+}
+points(mars_3403$prop.sd.m1.rvc~c(1.05+jitter_1),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m1.reef~c(1.15+jitter_2),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+mtext(side=1,at=c(1.05,1.15),c('RVC','REEF'),line=1)
+
+plot(mars_3403$prop.sd.m1.rvc~log10(mars_3403$rvc.b0),bty='l',ylab='Proportion of process error',type='n',xlab='log10(Mean counts per survey)',xlim=c(-2,1.5))
+points(mars_3403$prop.sd.m1.rvc~log10(mars_3403$rvc.b0),cex=2,col='white',bg=adjustcolor('darkblue',alpha.f=0.7),pch=21)
+points(mars_3403$prop.sd.m1.reef~log10(mars_3403$reef.b0),cex=2,col='white',bg=adjustcolor('darkred',alpha.f=0.7),pch=21)
+legend(1.2,1,c("RVC surveys","REEF surveys"),text.col=c('darkblue','darkred'),bty='n')
+rvc<- lm(qlogis(mars_3403$prop.sd.m1.rvc)~log10(mars_3403$rvc.b0))
+reef<- lm(qlogis(mars_3403$prop.sd.m1.reef)~log10(mars_3403$reef.b0))
+
+
+
+
+###simulation
+x0<- 0.3
+x<- NA
+for(i in 1:26){
+  x<
+}
