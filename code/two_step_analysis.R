@@ -3,11 +3,13 @@ setwd("C:/Users/14388/Desktop/reef_florida_keys_data")
 library(rstan);library(loo);library(bayesplot);library(dplyr);library(tidyverse);library(stringr);library(lubridate);library(rlist)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
-
+memory.limit(size = 65000) 
 ####Functions####
+`%notin%`<- Negate(`%in%`)
+
 rvc_filter = function(x,GZ,sp){
   x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
-  x1= x %>% subset(region.id==GZ) %>% select(SSU_YEAR,SPECIES_CD,everything())
+  x1= x %>% subset(region.id==GZ) %>% dplyr::select(SSU_YEAR,SPECIES_CD,everything())
   x2= complete(x1,SSU_YEAR,nesting(SPECIES_CD),fill=list(NUM=0))
   zeros = anti_join(x2,x1)
   zeros[,3:29]<- x1[match(zeros$SSU_YEAR,x1$SSU_YEAR),3:29]
@@ -52,7 +54,7 @@ ts_rvc = function(x){ #Takes the output from the previous function
 
 reef_filter = function(R,GZ,sp,geog){ #function to trim dataframe and add in occurrence data by species
   occ_list<- list()
-  TempDat<-R %>% subset(site4==GZ) %>% subset(year<=2018) %>% select('formid','speciesid','abundance',everything())
+  TempDat<-R %>% subset(site4==GZ) %>% subset(year<=2018) %>% dplyr::select('formid','speciesid','abundance',everything())
   TempDat$hab_class<- geog$hab_class[match(TempDat$geogr,geog$geogid)]
   Zeros<- complete(TempDat,formid,nesting(speciesid),
                    fill=list(abundance=0)) %>%
@@ -406,17 +408,29 @@ fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
+
 rvc_occs_1<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef)
 rvc_ts<- ts_rvc(rvc_occs_1)
+rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>18)
 rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>18)
 
 rvc.green<- do.call(rbind, lapply(rvc_ts_filter, data.frame, stringsAsFactors=FALSE))
 rvc.green.sp<- unique(rvc.green$sp)
 fish_reef_trim<- subset(fish_reef, rvc_code %in% rvc.green.sp)
 
-rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim)
-reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim,geog=reef_geog_3403)
-reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim)
+##Species to drop based on poor model fits
+drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
+         "Longfin Damselfish","Reef Croaker","Spotted Moray","Black Margate",
+         "White Margate","Blue Runner","Yellow Jack","Cero","Bluelip Parrotfish",
+         "Bucktooth Parrotfish","Green Razorfish","Tobaccofish","Sharksucker",
+         "Glassy Sweeper","Dog Snapper","Atlantic Spadefish","Yellowhead Jawfish")
+
+fish_reef_trim2<- subset(fish_reef_trim,commonname %notin% drop)
+
+
+rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2)
+reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim2,geog=reef_geog_3403)
+reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim2)
 rvc_ts<- ts_rvc(rvc_occs)
 
 
@@ -596,6 +610,99 @@ for(i in 1:N){
  x0[i] ~ normal(0,10);
  sd_r[i] ~ cauchy(0,1);
  sd_q[i] ~ cauchy(0,1);
+  for(t in 1:TT){
+    pro_dev[t,i] ~ normal(0, sd_q[i]);
+  }
+}
+for(i in 1:n_pos){
+    y[i] ~ normal(x[col_indx_pos[i], row_indx_pos[i]], sd_r[row_indx_pos[i]]);
+}
+}
+generated quantities {
+  vector[n_pos] log_lik;
+  for (n in 1:n_pos) log_lik[n] = normal_lpdf(y[n] | x[col_indx_pos[n], row_indx_pos[n]], sd_r[row_indx_pos[n]]);
+}
+"
+
+mod_1_t<-"data{
+  int<lower=0> TT; //Timespan
+  int<lower=0> N; // num of ts; rows of y
+  int<lower=0> n_pos; // number of non-NA values
+  int<lower=0> col_indx_pos[n_pos]; // col index of non-NA vals
+  int<lower=0> row_indx_pos[n_pos]; // row index of non-NA vals
+  vector[n_pos] ts_id; // id for the scaling parameter (a)
+  vector[n_pos] y;
+}
+parameters{
+  real x0;
+  real a;
+  real u;
+  vector[TT] pro_dev;
+  real<lower=0> sd_q;
+  real<lower=0> sd_r[N];
+}
+transformed parameters{
+  vector[TT] x;
+  x[1] = x0 + pro_dev[1];
+  for(t in 2:TT) {
+    x[t] = x[t-1] + u + pro_dev[t];
+  }
+}
+model{
+  x0 ~ normal(0,5);
+  a ~ normal(0,5);
+  sd_q ~ inv_gamma(2,0.25);
+  u ~ normal(0,0.5);
+  
+  for(i in 1:N){
+    sd_r[i] ~ inv_gamma(2,0.25);
+  }
+  
+  for(t in 1:TT){
+    pro_dev[t] ~ normal(0, sd_q);
+  }
+  for(i in 1:n_pos){
+   y[i] ~ normal(x[col_indx_pos[i]]+(a*ts_id[i]), sd_r[row_indx_pos[i]]);
+  }
+   
+}
+generated quantities{
+  vector[n_pos] log_lik;
+  for (i in 1:n_pos) log_lik[i] = normal_lpdf(y[i]|x[col_indx_pos[i]]+(a*ts_id[i]), sd_r[row_indx_pos[i]]);
+}
+"
+
+mod_2_t<-"
+data{
+  int<lower=0> TT; // length of ts
+  int<lower=0> N; // num of ts; rows of y
+  int<lower=0> n_pos; // number of non-NA values in y
+  int<lower=0> col_indx_pos[n_pos]; // col index of non-NA vals
+  int<lower=0> row_indx_pos[n_pos]; // row index of non-NA vals
+  vector[n_pos] y;
+}
+parameters {
+  vector[N] pro_dev[TT];
+  vector[N] x0; // initial states
+  real<lower=0> sd_q[N];
+  real<lower=0> sd_r[N]; // obs variances are different
+  vector[N] u; //trends
+}
+transformed parameters{
+  vector[N] x[TT];
+  for(i in 1:N){
+    x[1,i] = x0[i] + pro_dev[1,i];
+    for(t in 2:TT){
+     x[t,i] = x[t-1,i] + u[i] + pro_dev[t,i];
+    }
+  }
+}
+model{
+for(i in 1:N){
+ x0[i] ~ normal(0,10);
+ u[i] ~ normal(0,0.5);
+ sd_r[i] ~ inv_gamma(2,0.25);
+ sd_q[i] ~ inv_gamma(2,0.25);
   for(t in 1:TT){
     pro_dev[t,i] ~ normal(0, sd_q[i]);
   }
@@ -865,6 +972,148 @@ for(i in 1:nrow(fish_reef_trim)){
   
 }
 write.csv(mars_3403,'GLMM_smoothed_abund_ts_3403.csv')
+
+###With trend####
+setwd("C:/Users/14388/Desktop/reef_florida_keys_data/abund ts plots mar 2")
+reef_mod<- vector(mode='list',length=nrow(fish_reef))
+rvc_mod<- vector(mode='list',length=nrow(fish_reef))
+ts_comp<- vector(mode='list',length=nrow(fish_reef))
+ts_orig<- vector(mode='list',length=nrow(fish_reef))
+
+library(ordinal);library(glmmTMB)
+mars_3403<- data.frame(SP=NA,m1.loo=NA,m2.loo=NA,m1.params=NA,m2.params=NA,mod=NA,m1.sd_q=NA,m2.sd_q1=NA,m2.sd_q2=NA,m1.sd_r1=NA,m1.sd_r2=NA,m2.sd_r1=NA,m2.sd_r2=NA,prop.sd.m1.rvc=NA,prop.sd.m1.reef=NA,prop.sd.m2.rvc=NA,prop.sd.m2.reef=NA,years.rvc=NA,years.reef=NA,rvc.b0=NA,reef.b0=NA,rvc.var.hab=NA,reef.var.hab=NA,reef.var.site=NA,reef.var.dmy=NA,reef.var.diver=NA,rvc.b.depth=NA,reef.b.depth=NA,reef.b.btime=NA,reef.b.vis=NA,reef.b.curr=NA,rvc.b.cont=NA,reef.b.cont=NA,rvc.b.isol=NA,reef.b.isol=NA,rvc.b.rubb=NA,reef.b.hubb=NA,rvc.b.sg=NA,reef.b.sg=NA,b.expert.reef=NA,u.m1=NA,u.rvc=NA,u.reef=NA)
+for(i in 1:nrow(fish_reef_trim2)){
+  spp_rvc<- rvc_occs[[i]]
+  spp_reef<- reef_occs[[i]]
+  
+  tryCatch({rvc_mod[[i]]<-glmmTMB(NUM.total2~scale(DEPTH)+as.factor(YEAR)+(1|HAB_CD2),family = nbinom1,data=spp_rvc)},error=function(e){return(NULL)})
+  tryCatch({reef_mod[[i]]<- clmm(as.factor(abundance)~scale(as.numeric(btime))+scale(as.numeric(averagedepth))+scale(as.numeric(visibility))+scale(as.numeric(current))+as.factor(exp)+as.factor(year)+(1|hab_class2)+(1|geogr)+(1|site_dmy)+(1|fish_memberid),link='logit',threshold='flexible',data=spp_reef)},error=function(e){return(NULL)})
+  
+  if(is.null(rvc_mod[[i]])==T){next}
+  if(is.null(reef_mod[[i]])==T){next}
+  yr_coef<- NA
+  yr_coef[1]<- rvc_mod[[i]]$fit$par[1]
+  for(x in 2:length(as.numeric(unique(sort(spp_rvc$YEAR))))){
+    yr_coef[x]<- rvc_mod[[i]]$fit$par[1]+rvc_mod[[i]]$fit$par[1+x]
+  }
+  rvc_years<- data.frame(year=as.numeric(unique(sort(spp_rvc$YEAR))),year_lambda=yr_coef)
+  rvc_years<- as.data.frame(complete(rvc_years,year=seq(1993,2018)))
+  
+  reef_coef<- data.frame(year=seq(1993,2018),p_0=NA,p_1=NA,p_2=NA,p_11=NA,p_101=NA,lambda=NA)
+  reef_coef[1,2]=plogis(reef_mod[[i]]$coefficients[1])
+  reef_coef[1,3]<-plogis(reef_mod[[i]]$coefficients[2])-plogis(reef_mod[[i]]$coefficients[1])
+  reef_coef[1,4]<-plogis(reef_mod[[i]]$coefficients[3])-plogis(reef_mod[[i]]$coefficients[2])
+  reef_coef[1,5]<-1-plogis(reef_mod[[i]]$coefficients[3])
+  reef_coef[1,6]<- 0
+  reef_coef[1,7]<- sum(c(reef_coef[1,2]*0,reef_coef[1,3]*1,reef_coef[1,4]*2,reef_coef[1,5]*11,reef_coef[1,6]*101))
+  for(x in 2:length(as.numeric(unique(sort(spp_reef$year))))){
+    if(length(reef_mod[[i]]$alpha)==3){
+      reef_coef[x,2]=plogis(reef_mod[[i]]$coefficients[1]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,3]<-plogis(reef_mod[[i]]$coefficients[2]-reef_mod[[i]]$coefficients[x+7])-plogis(reef_mod[[i]]$coefficients[1]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,4]<-plogis(reef_mod[[i]]$coefficients[3]-reef_mod[[i]]$coefficients[x+7])-plogis(reef_mod[[i]]$coefficients[2]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,5]<-1-plogis(reef_mod[[i]]$coefficients[3]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,6]<- 0
+      reef_coef[x,7]<- sum(c(reef_coef[x,2]*0,reef_coef[x,3]*1,reef_coef[x,4]*2,reef_coef[x,5]*11,reef_coef[x,6]*101))
+    }
+    if(length(reef_mod[[i]]$alpha)==4){
+      reef_coef[x,2]=plogis(reef_mod[[i]]$coefficients[1]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,3]<-plogis(reef_mod[[i]]$coefficients[2]-reef_mod[[i]]$coefficients[x+7])-plogis(reef_mod[[i]]$coefficients[1]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,4]<-plogis(reef_mod[[i]]$coefficients[3]-reef_mod[[i]]$coefficients[x+7])-plogis(reef_mod[[i]]$coefficients[2]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,5]<-plogis(reef_mod[[i]]$coefficients[4]-reef_mod[[i]]$coefficients[x+7])-plogis(reef_mod[[i]]$coefficients[3]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,6]<-1-plogis(reef_mod[[i]]$coefficients[4]-reef_mod[[i]]$coefficients[x+7])
+      reef_coef[x,7]<- sum(c(reef_coef[x,2]*0,reef_coef[x,3]*1,reef_coef[x,4]*2,reef_coef[x,5]*11,reef_coef[x,6]*101))
+      
+    }
+  }
+  
+  ts_comp[[i]]<- t(rvc_years$year_lambda)
+  ts_comp[[i]]<- rbind(ts_comp[[i]],t(log(reef_coef$lambda)))
+  colnames(ts_comp[[i]])<- rvc_years$year
+  
+  ts_orig[[i]]<- t(rvc_ts_filter[[i]]$mean_abund)
+  ts_orig[[i]]<- rbind(ts_orig[[i]],t(reef_ts[[i]]$mean_abund))
+  
+  Y<- ts_comp[[i]]
+  
+  ypos <- Y[!is.na(Y)]
+  n_pos <- length(ypos)  #number on non-NA ys
+  indx_pos <- which(!is.na(Y), arr.ind = TRUE)  #index on the non-NAs
+  col_indx_pos <- as.vector(indx_pos[, "col"])
+  row_indx_pos <- as.vector(indx_pos[, "row"])
+  ts_pos<- ifelse(row_indx_pos==1,0,1)
+  
+  fit_1<- rstan::stan(model_code = mod_1_t, data = list(y = ypos, 
+                                                      TT = ncol(Y), N = nrow(Y), n_pos = n_pos, ts_id=ts_pos, col_indx_pos = col_indx_pos, 
+                                                      row_indx_pos = row_indx_pos), pars = c("sd_q", "x", "sd_r",'a',
+                                                                                             "x0",'u',"log_lik"),control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 500, chains = 4, iter = 2000, thin = 1)
+  fit_2 <- rstan::stan(model_code = mod_2_t, 
+                       data = list(y = ypos, TT = ncol(Y), N = nrow(Y), n_pos = n_pos, col_indx_pos = col_indx_pos, 
+                                   row_indx_pos = row_indx_pos), pars = c("sd_q", "x", "sd_r","x0",'u','log_lik'),
+                       control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 500, chains = 4, iter = 2000, thin = 1)
+  
+  params_1<- rstan::extract(fit_1)
+  params_2<- rstan::extract(fit_2)
+  
+  loo1= loo::loo(fit_1)
+  loo2= loo::loo(fit_2)
+  loo_comp<- loo::loo_compare(loo1,loo2)
+  ll1<-  loo::extract_log_lik(fit_1)
+  ll2<-  loo::extract_log_lik(fit_2)
+  waic1<- loo::waic(ll1)
+  waic2<- loo::waic(ll2)
+  
+  mars_3403[i,1]=fish_reef_trim2$commonname[i]
+  mars_3403[i,2]=loo1$estimates[1,1]
+  mars_3403[i,3]=loo2$estimates[1,1]
+  mars_3403[i,4]=loo1$estimates[1,2]
+  mars_3403[i,5]=loo2$estimates[1,2]
+  mars_3403[i,6]=rownames(loo_comp)[1]
+  mars_3403[i,7]=median(params_1$sd_q)
+  mars_3403[i,8]=median(params_2$sd_q[,1])
+  mars_3403[i,9]=median(params_2$sd_q[,2])
+  mars_3403[i,10]=median(params_1$sd_r[,1])
+  mars_3403[i,11]=median(params_1$sd_r[,2])
+  mars_3403[i,12]=median(params_2$sd_r[,1])
+  mars_3403[i,13]=median(params_2$sd_r[,2])
+  mars_3403[i,14]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r[,1]))
+  mars_3403[i,15]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r[,2]))
+  mars_3403[i,16]=median(params_2$sd_q[,1]/(params_2$sd_q[,1]+params_2$sd_r[,1]))
+  mars_3403[i,17]=median(params_2$sd_q[,2]/(params_2$sd_q[,2]+params_2$sd_r[,2]))
+  mars_3403[i,18]=length(na.omit(ts_comp[[i]][1,]))
+  mars_3403[i,19]=length(na.omit(ts_comp[[i]][2,]))
+  mars_3403[i,20]=mean(na.omit(exp(rvc_years$year_lambda)))
+  mars_3403[i,21]=mean(reef_coef$lambda)
+  mars_3403[i,22]=glmmTMB::VarCorr(rvc_mod[[i]])$cond$HAB_CD2[1]
+  mars_3403[i,23]=reef_mod[[i]]$ST$hab_class2[1]^2
+  mars_3403[i,24]=reef_mod[[i]]$ST$geogr[1]^2
+  mars_3403[i,25]=reef_mod[[i]]$ST$site_dmy[1]^2
+  mars_3403[i,26]=reef_mod[[i]]$ST$fish_memberid[1]^2
+  mars_3403[i,27]=glmmTMB::fixef(rvc_mod[[i]])$cond[2]
+  mars_3403[i,28]=reef_mod[[i]]$beta[2]
+  mars_3403[i,29]=reef_mod[[i]]$beta[1]
+  mars_3403[i,30]=reef_mod[[i]]$beta[3]
+  mars_3403[i,31]=reef_mod[[i]]$beta[4]
+  mars_3403[i,32]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[1,]
+  mars_3403[i,33]=ordinal::ranef(reef_mod[[i]])$hab_class2[1,]
+  mars_3403[i,34]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[2,]
+  mars_3403[i,35]=ordinal::ranef(reef_mod[[i]])$hab_class2[2,]
+  mars_3403[i,36]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[3,]
+  mars_3403[i,37]=ordinal::ranef(reef_mod[[i]])$hab_class2[3,]
+  mars_3403[i,38]=glmmTMB::ranef(rvc_mod[[i]])$cond$HAB_CD2[4,]
+  mars_3403[i,39]=ordinal::ranef(reef_mod[[i]])$hab_class2[4,]
+  mars_3403[i,40]=reef_mod[[i]]$beta[5]
+  mars_3403[i,41]=median(params_1$u)
+  mars_3403[i,42]=median(params_2$u[,1])
+  mars_3403[i,43]=median(params_2$u[,2])
+  
+  TS_stan_plot_abund_MARSS(ts1=ts_orig[[i]],ts2=ts_comp[[i]],sp=fish_reef_trim2$commonname[i],GZ='Key Largo',mod=mars_3403[i,6])
+  dev.off()
+  print(i)
+  
+}
+write.csv(mars_3403,'GLMM_smoothed_abund_ts_trend_3403.csv')
+
+mars_3403_2<- subset(mars_3403,u.rvc<0.2)
 
 #exploratory plots
 plot(mars_3403$prop.sd.m2.rvc~rep(1,nrow(mars_3403)),xlim=c(1,1.2),bty='l',xaxt='n',ylab='Proportion of process error',type='n',xlab='')

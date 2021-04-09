@@ -478,7 +478,7 @@ reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim,geog=reef_geog_3403)
 reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim)
 rvc_ts<- ts_rvc(rvc_occs)
 
-####Stan model
+####Stan models####
 nb_test_rvc<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
   int y[N]; //presence or absence on each survey
@@ -1128,7 +1128,7 @@ parameters {
   real x0; //initial popn size
   real<lower = 0> recip_phi; //overdispersion parameter
   real a; //scalar for time-series 2
-  
+
   //deviations from intercept
   vector[Z1] beta1; //effort coefficients - RVC
   vector[Z2] beta2; //effort coefficients - REEF
@@ -1186,14 +1186,14 @@ model{
   a ~ normal(0,5); //scalar
   
   //variance terms
-  sd_hab1 ~ cauchy(0, 3);
-  sd_hab2 ~ cauchy(0, 3);
-  sd_q ~ cauchy(0, 3);
-  sd_r1 ~ cauchy(0, 3);
-  sd_r2 ~ cauchy(0, 3);
-  sd_site ~ cauchy(0, 3);
-  sd_dv ~ cauchy(0, 3);
-  sd_dmy ~ cauchy(0, 3);
+  sd_hab1 ~ inv_gamma(2, 1);
+  sd_hab2 ~ inv_gamma(2, 1);
+  sd_q ~inv_gamma(2,0.25);
+  sd_r1 ~ inv_gamma(2,0.25);
+  sd_r2 ~ inv_gamma(2,0.25);
+  sd_site ~ inv_gamma(2, 1);
+  sd_dv ~ inv_gamma(2, 1);
+  sd_dmy ~ inv_gamma(2, 1);
   
   //varying intercepts
   a_hab1 ~ normal(0, sd_hab1);
@@ -1221,8 +1221,6 @@ model{
   for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
   for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
 } 
-  
-
 "
 
 abund_test_SS_sep<-"functions {
@@ -1286,7 +1284,7 @@ parameters {
   real x01; //initial popn size - rvc
   real x02; //initial popn size - reef
   real<lower = 0> recip_phi; //overdispersion parameter
-
+ 
   //deviations from intercept
   vector[Z1] beta1; //effort coefficients - RVC
   vector[Z2] beta2; //effort coefficients - REEF
@@ -1327,8 +1325,8 @@ transformed parameters{
   x2[1] = x02 + pro_dev2[1];
    
   for(t in 2:TT){
-    x1[t] = x1[t-1] + pro_dev1[t];
-    x2[t] = x2[t-1] + pro_dev2[t];
+    x1[t] = x1[t-1]  + pro_dev1[t];
+    x2[t] = x2[t-1]  + pro_dev2[t];
   }
    
   for(i in 1:N_yr1){
@@ -1347,16 +1345,14 @@ model{
   beta2 ~ normal(0,2); //covariates - reef
   x01 ~ normal(0,5); //initial state - rvc
   x02 ~ normal(0,5); //initial state - reef
-  u1 ~ normal(0,1); //trend constant - rvc
-  u2 ~ normal(0,1); //trend constant - reef
- 
+
   //variance terms
   sd_hab1 ~ cauchy(0, 1);
   sd_hab2 ~ cauchy(0, 1);
-  sd_q1 ~ cauchy(0, 1);
-  sd_q2 ~ cauchy(0, 1);
-  sd_r1 ~ cauchy(0, 1);
-  sd_r2 ~ cauchy(0, 1);
+  sd_q1 ~ inv_gamma(2,0.25);
+  sd_q2 ~ inv_gamma(2,0.25);
+  sd_r1 ~ inv_gamma(2,0.25);
+  sd_r2 ~ inv_gamma(2,0.25);
   sd_site ~ cauchy(0, 1);
   sd_dv ~ cauchy(0, 1);
   sd_dmy ~ cauchy(0, 1);
@@ -2012,8 +2008,8 @@ test_comb<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc_oc
                                                                         N_yr2=length(unique(reef_occs[[3]]$year)),
                                                                         yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
                                                                         year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                             pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a'),
-                             control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 400, thin = 1)
+                             pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
+                             control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
 
 test_sep<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[3]]$NUM.total2,
                                                                      y2 =reef_occs[[3]]$abundance2,
@@ -2041,8 +2037,11 @@ test_sep<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs
                                                                      N_yr2=length(unique(reef_occs[[3]]$year)),
                                                                      yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
                                                                      year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','u1','u2','x1','x2','a_yr1','a_yr2'),
+                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
                         control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+system.time(loo1= loo::loo(test_comb))
+start.time <- Sys.time()
+system.time(loo2<- loo::loo(test_sep_rf))
 
 
 shinystan::launch_shinystan(test_sep)
@@ -2074,7 +2073,8 @@ test_occ_sep<- rstan::stan(model_code = occ_test_SS_sep, data = list(y1 = rvc_oc
                                                                    N_yr2=length(unique(reef_occs[[3]]$year)),
                                                                    yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
                                                                    year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                       pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2'),
+                       pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2',
+                                'log_lik'),
                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
 
 test_occ_comb<- rstan::stan(model_code = occ_test_SS_comb, data = list(y1 = rvc_occs[[3]]$occ,
@@ -2136,8 +2136,8 @@ test_comb_rf<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc
                                                                      N_yr2=length(unique(reef_occs[[5]]$year)),
                                                                      yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
                                                                      year_id2=as.numeric(factor(reef_occs[[5]]$year))),
-                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a'),
-                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 400, thin = 1)
+                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
+                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 300, thin = 1)
 
 test_sep_rf<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[5]]$NUM.total2,
                                                                    y2 =reef_occs[[5]]$abundance2,
@@ -2165,8 +2165,24 @@ test_sep_rf<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_o
                                                                    N_yr2=length(unique(reef_occs[[5]]$year)),
                                                                    yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
                                                                    year_id2=as.numeric(factor(reef_occs[[5]]$year))),
-                       pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','u1','u2','x1','x2','a_yr1','a_yr2'),
-                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+                       pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
+                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 600, thin = 1)
+
+shinystan::launch_shinystan(test_comb_rf)
+
+params_1<- rstan::extract(test_comb_rf)
+params_2<- rstan::extract(test_sep_rf)
+
+loo1= loo::loo(test_comb_rf)
+start.time <- Sys.time()
+system.time(loo2<- loo::loo(test_sep_rf))
+
+time.taken <- end.time - start.time
+time.taken
+start.time <- Sys.time()
+loo_comp<- loo::loo_compare(loo1,loo2)
+time.taken <- end.time - start.time
+time.taken
 
 params_sep<- rstan::extract(test_sep_rf)
 
