@@ -12,6 +12,45 @@ abund_tranfs<- function(probs){
   return(sum)
 }
 
+ord_to_n<- function(x,c){
+  ord_yr=list()
+  abund_x=matrix(ncol=26,nrow=nrow(c))
+  if(ncol(c)==2){
+    for(i in 1:26){
+      ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
+      ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
+      ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
+      ord_yr[[i]][,3]<-1-plogis(c[,2]-x[,i])
+      ord_yr[[i]][,4]<- 0
+      ord_yr[[i]][,5]<- 0
+      abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
+    }
+  }
+  if(ncol(c)==3){
+    for(i in 1:26){
+    ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
+    ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
+    ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
+    ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
+    ord_yr[[i]][,4]<- 1-plogis(c[,3]-x[,i])
+    ord_yr[[i]][,5]<- 0
+    abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
+    }
+  }
+  if(ncol(c)==4){
+    for(i in 1:26){
+    ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
+    ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
+    ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
+    ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
+    ord_yr[[i]][,4]<- plogis(c[,4]-x[,i])-plogis(c[,3]-x[,i])
+    ord_yr[[i]][,5]<- 1--plogis(c[,4]-x[,i])
+    abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
+    }
+  }
+  return(abund_x)
+}
+
 rvc_filter = function(x,GZ,sp){
   x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
   x1= x %>% subset(region.id==GZ) %>% select(SSU_YEAR,SPECIES_CD,everything())
@@ -115,6 +154,359 @@ ts_reef = function(X,sp){
 }
 
 
+
+###Stan abundance plot functions###
+TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
+  pdf(paste(paste(i,sp,mod,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
+   
+  lambda_mat<- list()  
+  for(i in 1:26){
+    reef_coef<- data.frame(p_0.y=NA,p_1.y=NA,p_2.y=NA,p_11.y=NA,p_101.y=NA,p_0.x=NA,p_1.x=NA,p_2.x=NA,p_11.x=NA,p_101.x=NA,lambda.y=NA,lambda.x=NA,iter=seq(1,1200))
+    
+      if(ncol(params1$c)==2){
+      if(mod=='model1'){
+      reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,3]<-1-plogis(params1$c[,2]-params1$a_yr2[,i])
+      reef_coef[,4]<- 0
+      reef_coef[,5]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-1-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 0
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,8]<-1-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+        reef_coef[,9]<- 0
+        reef_coef[,10]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-1-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- 0
+        reef_coef[,10]<- 0
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    
+    if(ncol(params1$c)==3){
+      if(mod=='model1'){
+      reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
+      reef_coef[,4]<- 1-plogis(params1$c[,3]-params1$a_yr2[,i])
+      reef_coef[,5]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 1-plogis(params2$c[,3]-params2$a_yr2[,i])
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+        reef_coef[,9]<- 1-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+        reef_coef[,10]<- 0
+      }
+      if(mod=='model2'){
+      reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+      reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+      reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+      reef_coef[,9]<- 1-plogis(params2$c[,3]-params2$x2[,i])
+      reef_coef[,10]<- 0
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    
+    if(ncol(params1$c)==4){
+      if(mod=='model1'){
+      reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+      reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
+      reef_coef[,4]<- plogis(params1$c[,4]-params1$a_yr2[,i])-plogis(params1$c[,3]-params1$a_yr2[,i])
+      reef_coef[,5]<- 1- plogis(params1$c[,4]-params1$a_yr2[,i])
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- plogis(params2$c[,4]-params2$a_yr2[,i])-plogis(params2$c[,3]-params2$a_yr2[,i])
+        reef_coef[,5]<- 1- plogis(params2$c[,4]-params2$a_yr2[,i])
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i])
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i])-plogis(params1$c[,1]-params1$x2[,i])
+        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i])-plogis(params1$c[,2]-params1$x2[,i])
+        reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i])-plogis(params1$c[,3]-params1$x[,i])
+        reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i])
+      }
+      if(mod=='model2'){
+      reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+      reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+      reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+      reef_coef[,9]<- plogis(params2$c[,4]-params2$x2[,i])-plogis(params2$c[,3]-params2$x2[,i])
+      reef_coef[,10]<- 1-plogis(params2$c[,4]-params2$x2[,i])
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    lambda_mat[[i]]=reef_coef
+  }  
+  
+  
+    x_mat<- data.frame(median.rvc=NA,l.95=NA,u.95=NA,median.reef=NA,l.95.rf=NA,u.95.rf=NA)
+    for(i in 1:26){
+      if(mod=='model1'){
+        x_mat[i,1]=exp(median(params1$x[,i]))
+        x_mat[i,2]=exp(quantile(params1$x[,i],0.05))
+        x_mat[i,3]=exp(quantile(params1$x[,i],0.95))
+      }
+      if(mod=='model2'){
+        x_mat[i,1]=exp(median(params2$x1[,i]))
+        x_mat[i,2]=exp(quantile(params2$x1[,i],0.05))
+        x_mat[i,3]=exp(quantile(params2$x1[,i],0.95))
+      }
+      x_mat[i,4]=median(lambda_mat[[i]]$lambda.x)
+      x_mat[i,5]=quantile(lambda_mat[[i]]$lambda.x,0.05)
+      x_mat[i,6]=quantile(lambda_mat[[i]]$lambda.x,0.95)
+    }
+    
+    y_mat_rvc<- data.frame(year=ts1$YEAR[complete.cases(ts1)],median.rvc=NA,l.95.rvc=NA,u.95.rvc=NA)
+    y_mat_reef<- data.frame(year=seq(1993,2018),median.reef=NA,l.95.rf=NA,u.95.rf=NA)
+    for(i in 1:23){
+      if(mod=='model1'){
+       y_mat_rvc[i,2]=exp(median(params1$a_yr1[,i]))
+       y_mat_rvc[i,3]=exp(quantile(params1$a_yr1[,i],0.05))
+       y_mat_rvc[i,4]=exp(quantile(params1$a_yr1[,i],0.95))
+      }
+      if(mod=='model2'){
+        y_mat_rvc[i,2]=exp(median(params2$a_yr1[,i]))
+        y_mat_rvc[i,3]=exp(quantile(params2$a_yr1[,i],0.05))
+        y_mat_rvc[i,4]=exp(quantile(params2$a_yr1[,i],0.95))  
+      }
+    }
+    
+    for(i in 1:26){
+      y_mat_reef[i,2]=median(lambda_mat[[i]]$lambda.y)
+      y_mat_reef[i,3]=quantile(lambda_mat[[i]]$lambda.y,0.05)
+      y_mat_reef[i,4]=quantile(lambda_mat[[i]]$lambda.y,0.95)
+    }
+    y_mat<- full_join(y_mat_reef,y_mat_rvc)
+    
+    par(xpd=T)
+    plot(ts1$mean_abund~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts1$mean_abund,ts2$mean_abund,min(x_mat)))),max(na.omit(c(ts1$mean_abund,ts2$mean_abund,max(x_mat))))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
+    
+    lines(x_mat[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='darkcyan')
+    lines(x_mat[,4]~c(seq(1993,2018)),lty=5,lwd=2,col='darksalmon')
+    x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
+    y1<- c(x_mat[,2], rev(x_mat[,3]))
+    y2<-  c(x_mat[,5], rev(x_mat[,6]))
+    polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
+    polygon(x, y2, col = adjustcolor('darksalmon', alpha = 0.2), border=NA) # Add uncertainty polygon
+  
+  #  for(z in 1:26){
+  #    lines(c(y_mat[z,6],y_mat[z,7])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('dodgerblue4',alpha.f=0.6))
+  #    lines(c(y_mat[z,3],y_mat[z,4])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('firebrick4',alpha.f=0.6))
+  #  }
+  lines(ts1$mean_abund~ts1$YEAR,col=adjustcolor('navy',alpha.f=0.5),lwd=2)
+  points(ts1$mean_abund~ts1$YEAR,col='white',pch=21,bg=adjustcolor('navy',alpha.f=0.5),cex=1.5)
+  lines(y_mat$median.rvc~c(seq(1993,2018)),col='dodgerblue4',lwd=2)
+  points(y_mat$median.rvc~c(seq(1993,2018)),col='white',pch=21,bg='dodgerblue4',cex=1.5)
+  
+  lines(ts2$mean_abund~c(seq(1993,2018)),col=adjustcolor('darkred',alpha.f=0.5),lwd=2)
+  points(ts2$mean_abund~c(seq(1993,2018)),col='white',pch=21,bg=adjustcolor('darkred',alpha.f=0.5),cex=1.5)
+  lines(y_mat$median.reef~c(seq(1993,2018)),col='firebrick4',lwd=2)
+  points(y_mat$median.reef~c(seq(1993,2018)),col='white',pch=21,bg='firebrick4',cex=1.5)
+  
+  legend(2013,c(max(na.omit(c(ts1$mean_abund,ts2$mean_abund,max(x_mat))))*1.15),c('Obs. RVC surveys','Obs. REEF surveys','Est. RVC surveys','Est. REEF surveys'),text.col=c(adjustcolor('navy',alpha.f=0.5),adjustcolor('darkred',alpha.f=0.5),'dodgerblue4','firebrick4'),bty='n')
+dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
+}
+
+TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
+  pdf(paste(paste(i,sp,mod,GZ,'state_only',sep='_'),'.pdf',sep=''),width=8,height=6)
+  lambda_mat<- list()  
+  for(i in 1:26){
+    reef_coef<- data.frame(p_0.y=NA,p_1.y=NA,p_2.y=NA,p_11.y=NA,p_101.y=NA,p_0.x=NA,p_1.x=NA,p_2.x=NA,p_11.x=NA,p_101.x=NA,lambda.y=NA,lambda.x=NA,iter=seq(1,1200))
+    
+    if(ncol(params1$c)==2){
+      if(mod=='model1'){
+        reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,3]<-1-plogis(params1$c[,2]-params1$a_yr2[,i])
+        reef_coef[,4]<- 0
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-1-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 0
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,8]<-1-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+        reef_coef[,9]<- 0
+        reef_coef[,10]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-1-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- 0
+        reef_coef[,10]<- 0
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    
+    if(ncol(params1$c)==3){
+      if(mod=='model1'){
+        reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
+        reef_coef[,4]<- 1-plogis(params1$c[,3]-params1$a_yr2[,i])
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 1-plogis(params2$c[,3]-params2$a_yr2[,i])
+        reef_coef[,5]<- 0
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+        reef_coef[,9]<- 1-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+        reef_coef[,10]<- 0
+      }
+      if(mod=='model2'){
+        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- 1-plogis(params2$c[,3]-params2$x2[,i])
+        reef_coef[,10]<- 0
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    
+    if(ncol(params1$c)==4){
+      if(mod=='model1'){
+        reef_coef[,1]<- plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,2]<-plogis(params1$c[,2]-params1$a_yr2[,i])-plogis(params1$c[,1]-params1$a_yr2[,i])
+        reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
+        reef_coef[,4]<- plogis(params1$c[,4]-params1$a_yr2[,i])-plogis(params1$c[,3]-params1$a_yr2[,i])
+        reef_coef[,5]<- 1- plogis(params1$c[,4]-params1$a_yr2[,i])
+      }
+      if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- plogis(params2$c[,4]-params2$a_yr2[,i])-plogis(params2$c[,3]-params2$a_yr2[,i])
+        reef_coef[,5]<- 1- plogis(params2$c[,4]-params2$a_yr2[,i])
+      }
+      if(mod=='model1'){
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i])
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i])-plogis(params1$c[,1]-params1$x2[,i])
+        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i])-plogis(params1$c[,2]-params1$x2[,i])
+        reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i])-plogis(params1$c[,3]-params1$x[,i])
+        reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i])
+      }
+      if(mod=='model2'){
+        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- plogis(params2$c[,4]-params2$x2[,i])-plogis(params2$c[,3]-params2$x2[,i])
+        reef_coef[,10]<- 1-plogis(params2$c[,4]-params2$x2[,i])
+      }
+      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
+      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
+    }
+    lambda_mat[[i]]=reef_coef
+  }  
+  
+  
+  x_mat<- data.frame(median.rvc=NA,l.95=NA,u.95=NA,median.reef=NA,l.95.rf=NA,u.95.rf=NA)
+  for(i in 1:26){
+    if(mod=='model1'){
+      x_mat[i,1]=exp(median(params1$x[,i]))
+      x_mat[i,2]=exp(quantile(params1$x[,i],0.05))
+      x_mat[i,3]=exp(quantile(params1$x[,i],0.95))
+    }
+    if(mod=='model2'){
+      x_mat[i,1]=exp(median(params2$x1[,i]))
+      x_mat[i,2]=exp(quantile(params2$x1[,i],0.05))
+      x_mat[i,3]=exp(quantile(params2$x1[,i],0.95))
+    }
+    x_mat[i,4]=median(lambda_mat[[i]]$lambda.x)
+    x_mat[i,5]=quantile(lambda_mat[[i]]$lambda.x,0.05)
+    x_mat[i,6]=quantile(lambda_mat[[i]]$lambda.x,0.95)
+  }
+  
+  y_mat_rvc<- data.frame(year=ts1$YEAR[complete.cases(ts1)],median.rvc=NA,l.95.rvc=NA,u.95.rvc=NA)
+  y_mat_reef<- data.frame(year=seq(1993,2018),median.reef=NA,l.95.rf=NA,u.95.rf=NA)
+  for(i in 1:23){
+    if(mod=='model1'){
+      y_mat_rvc[i,2]=exp(median(params1$a_yr1[,i]))
+      y_mat_rvc[i,3]=exp(quantile(params1$a_yr1[,i],0.05))
+      y_mat_rvc[i,4]=exp(quantile(params1$a_yr1[,i],0.95))
+    }
+    if(mod=='model2'){
+      y_mat_rvc[i,2]=exp(median(params2$a_yr1[,i]))
+      y_mat_rvc[i,3]=exp(quantile(params2$a_yr1[,i],0.05))
+      y_mat_rvc[i,4]=exp(quantile(params2$a_yr1[,i],0.95))  
+    }
+  }
+  
+  for(i in 1:26){
+    y_mat_reef[i,2]=median(lambda_mat[[i]]$lambda.y)
+    y_mat_reef[i,3]=quantile(lambda_mat[[i]]$lambda.y,0.05)
+    y_mat_reef[i,4]=quantile(lambda_mat[[i]]$lambda.y,0.95)
+  }
+  y_mat<- full_join(y_mat_reef,y_mat_rvc)
+  
+  par(xpd=T)
+  plot(y_mat$median.rvc~y_mat$year,type='n',ylim=c(min(x_mat),max(c(max(y_mat[,2]),max(x_mat)))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
+  lines(x_mat[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='darkcyan')
+  lines(x_mat[,4]~c(seq(1993,2018)),lty=5,lwd=2,col='darksalmon')
+  x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
+  y1<- c(x_mat[,2], rev(x_mat[,3]))
+  y2<-  c(x_mat[,5], rev(x_mat[,6]))
+  polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
+  polygon(x, y2, col = adjustcolor('darksalmon', alpha = 0.2), border=NA) # Add uncertainty polygon
+  
+  #for(z in 1:26){
+ #   lines(c(y_mat[z,6],y_mat[z,7])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('dodgerblue4',alpha.f=0.6))
+ #   lines(c(y_mat[z,3],y_mat[z,4])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('firebrick4',alpha.f=0.6))
+ # }
+  lines(y_mat$median.rvc~y_mat$year,col='dodgerblue4',lwd=2)
+  points(y_mat$median.rvc~y_mat$year,col='white',pch=21,bg='dodgerblue4',cex=1.5)
+  
+  lines(y_mat$median.reef~c(seq(1993,2018)),col='firebrick4',lwd=2)
+  points(y_mat$median.reef~c(seq(1993,2018)),col='white',pch=21,bg='firebrick4',cex=1.5)
+  
+  legend(2013,c(max(c(max(y_mat[,2]),max(x_mat)))*1.15),c('Est. RVC surveys','Est. REEF surveys'),text.col=c(adjustcolor('navy',alpha.f=0.5),adjustcolor('darkred',alpha.f=0.5),'dodgerblue4','firebrick4'),bty='n')
+  dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
+  
+}
+
+
+####Stan occupancy plot function####
 TS_occ_plot_MARSS<- function(ts1,ts2,sp,GZ,mod){
   pdf(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
   par(xpd=T)
@@ -152,112 +544,8 @@ TS_occ_plot_MARSS<- function(ts1,ts2,sp,GZ,mod){
   dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
 }
 
-####Stan occupancy plot function####
-TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,params){
- # pdf(paste(paste(i,sp,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
-  par(xpd=T)
-  plot(ts1$mean_abund~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts1$mean_abund,ts2$mean_abund))),max(na.omit(c(ts1$mean_abund,ts2$mean_abund)))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
-  
-  lambda_mat<- list()
-    
-  reef_coef<- data.frame(p_0.y=NA,p_1.y=NA,p_2.y=NA,p_11.y=NA,p_101.y=NA,p_0.x=NA,p_1.x=NA,p_2.x=NA,p_11.x=NA,p_101.x=NA,lambda.y=NA,lambda.x=NA,iter=seq(1,1200))
-  for(i in 1:26){
-    if(ncol(params$c)==2){
-      reef_coef[,1]<- plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,2]<-plogis(params$c[,2]-params$a_yr2[,i])-plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,3]<-1-plogis(params$c[,2]-params$a_yr2[,i])
-      reef_coef[,4]<- 0
-      reef_coef[,5]<- 0
-      reef_coef[,6]=plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,7]<-plogis(params$c[,2]-params$x2[,i])-plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,8]<-1-plogis(params$c[,2]-params$x2[,i])
-      reef_coef[,9]<- 0
-      reef_coef[,10]<- 0
-      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
-      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
-          }
-    if(ncol(params$c)==3){
-      reef_coef[,1]<- plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,2]<-plogis(params$c[,2]-params$a_yr2[,i])-plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,3]<-plogis(params$c[,3]-params$a_yr2[,i])-plogis(params$c[,2]-params$a_yr2[,i])
-      reef_coef[,4]<- 1-plogis(params$c[,3]-params$a_yr2[,i])
-      reef_coef[,5]<- 0
-      reef_coef[,6]=plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,7]<-plogis(params$c[,2]-params$x2[,i])-plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,8]<-plogis(params$c[,3]-params$x2[,i])-plogis(params$c[,2]-params$x2[,i])
-      reef_coef[,9]<- 1-plogis(params$c[,3]-params$x2[,i])
-      reef_coef[,10]<- 0
-      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
-      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
-    }
-    if(ncol(params$c)==4){
-      reef_coef[,1]<- plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,2]<-plogis(params$c[,2]-params$a_yr2[,i])-plogis(params$c[,1]-params$a_yr2[,i])
-      reef_coef[,3]<-plogis(params$c[,3]-params$a_yr2[,i])-plogis(params$c[,2]-params$a_yr2[,i])
-      reef_coef[,4]<- plogis(params$c[,4]-params$a_yr2[,i])-plogis(params$c[,3]-params$a_yr2[,i])
-      reef_coef[,5]<- 1- plogis(params$c[,4]-params$a_yr2[,i])
-      reef_coef[,6]=plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,7]<-plogis(params$c[,2]-params$x2[,i])-plogis(params$c[,1]-params$x2[,i])
-      reef_coef[,8]<-plogis(params$c[,3]-params$x2[,i])-plogis(params$c[,2]-params$x2[,i])
-      reef_coef[,9]<- plogis(params$c[,4]-params$x2[,i])-plogis(params$c[,3]-params$x2[,i])
-      reef_coef[,10]<- 1-plogis(params$c[,4]-params$x2[,i])
-      reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
-      reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
-    }
-    
-    lambda_mat[[i]]<- reef_coef
-    
-  }
-  
-    x_mat<- data.frame(median.rvc=NA,l.95=NA,u.95=NA,median.reef=NA,l.95.rf=NA,u.95.rf=NA)
-    for(i in 1:26){
-      x_mat[i,1]=exp(median(params$x1[,i]))
-      x_mat[i,2]=exp(quantile(params$x1[,i],0.1))
-      x_mat[i,3]=exp(quantile(params$x1[,i],0.9))
-      x_mat[i,4]=median(lambda_mat[[i]]$lambda.x)
-      x_mat[i,5]=quantile(lambda_mat[[i]]$lambda.x,0.1)
-      x_mat[i,6]=quantile(lambda_mat[[i]]$lambda.x,0.9)
-    }
-    
-    y_mat_rvc<- data.frame(year=ts1$YEAR[complete.cases(ts1)],median.rvc=NA,l.95.rvc=NA,u.95.rvc=NA)
-    y_mat_reef<- data.frame(year=seq(1993,2018),median.reef=NA,l.95.rf=NA,u.95.rf=NA)
-    for(i in 1:23){
-      y_mat_rvc[i,2]=exp(median(params$a_yr1[,i]))
-      y_mat_rvc[i,3]=exp(quantile(params$a_yr1[,i],0.1))
-      y_mat_rvc[i,4]=exp(quantile(params$a_yr1[,i],0.9))
-    }
-    
-    for(i in 1:26){
-      y_mat_reef[i,2]=median(lambda_mat[[i]]$lambda.y)
-      y_mat_reef[i,3]=quantile(lambda_mat[[i]]$lambda.y,0.1)
-      y_mat_reef[i,4]=quantile(lambda_mat[[i]]$lambda.y,0.9)
-    }
-    y_mat<- full_join(y_mat_reef,y_mat_rvc)
-    
-    lines(x_mat[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='darkcyan')
-    lines(x_mat[,4]~c(seq(1993,2018)),lty=5,lwd=2,col='darksalmon')
-    x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
-    y1<- c(x_mat[,2], rev(x_mat[,3]))
-    y2<-  c(x_mat[,5], rev(x_mat[,6]))
-    polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
-    polygon(x, y2, col = adjustcolor('darksalmon', alpha = 0.2), border=NA) # Add uncertainty polygon
-
-  lines(ts1$mean_abund~ts1$YEAR,col=adjustcolor('navy',alpha.f=0.5),lwd=2)
-  points(ts1$mean_abund~ts1$YEAR,col='white',pch=21,bg=adjustcolor('navy',alpha.f=0.5),cex=1.5)
-  lines(y_mat$median.rvc~c(seq(1993,2018)),col='dodgerblue4',lwd=2)
-  points(y_mat$median.rvc~c(seq(1993,2018)),col='white',pch=21,bg='dodgerblue4',cex=1.5)
-  
-  lines(ts2$mean_abund~c(seq(1993,2018)),col=adjustcolor('darkred',alpha.f=0.5),lwd=2)
-  points(ts2$mean_abund~c(seq(1993,2018)),col='white',pch=21,bg=adjustcolor('darkred',alpha.f=0.5),cex=1.5)
-  lines(y_mat$median.reef~c(seq(1993,2018)),col='firebrick4',lwd=2)
-  points(y_mat$median.reef~c(seq(1993,2018)),col='white',pch=21,bg='firebrick4',cex=1.5)
-  
-  legend(2013,c(max(na.omit(c(ts1$mean_abund,ts2$mean_abund)))*1.15),c('Obs. RVC surveys','Obs. REEF surveys','Est. RVC surveys','Est. REEF surveys'),text.col=c(adjustcolor('navy',alpha.f=0.5),adjustcolor('darkred',alpha.f=0.5),'dodgerblue4','firebrick4'),bty='n')
-#  dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
-}
 
 
-####Stan occupancy plot function####
 TS_stan_plot_MARSS<- function(ts1,ts2,sp,GZ,params){
   
   x_mat<- data.frame(median.rvc=NA,l.95=NA,u.95=NA,median.reef=NA,l.95.rf=NA,u.95.rf=NA)
@@ -473,12 +761,924 @@ rvc.green<- do.call(rbind, lapply(rvc_ts_filter, data.frame, stringsAsFactors=FA
 rvc.green.sp<- unique(rvc.green$sp)
 fish_reef_trim<- subset(fish_reef, rvc_code %in% rvc.green.sp)
 
-rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim)
-reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim,geog=reef_geog_3403)
-reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim)
+##Species to drop based on poor model fits
+drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
+         "Longfin Damselfish","Reef Croaker","Spotted Moray","Black Margate",
+         "White Margate","Blue Runner","Yellow Jack","Cero","Bluelip Parrotfish",
+         "Bucktooth Parrotfish","Green Razorfish","Tobaccofish","Sharksucker",
+         "Glassy Sweeper","Dog Snapper","Atlantic Spadefish","Yellowhead Jawfish")
+
+fish_reef_trim2<- subset(fish_reef_trim,commonname %notin% drop)
+
+
+rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2)
+reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim2,geog=reef_geog_3403)
+reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim2)
 rvc_ts<- ts_rvc(rvc_occs)
 
 ####Stan models####
+abund_test_SS_comb<-"functions {
+  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
+    int K = num_elements(c) + 1;
+    vector[K - 1] sigma = inv_logit(phi - c);
+    vector[K] p;
+    matrix[K, K] J = rep_matrix(0, K, K);
+    
+    // Induced ordinal probabilities
+    p[1] = 1 - sigma[1];
+    for (k in 2:(K - 1))
+      p[k] = sigma[k - 1] - sigma[k];
+    p[K] = sigma[K - 1];
+    
+    // Baseline column of Jacobian
+    for (k in 1:K) J[k, 1] = 1;
+    
+    // Diagonal entries of Jacobian
+    for (k in 2:K) {
+      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
+      J[k, k] = - rho;
+      J[k - 1, k] = rho;
+    }
+    
+    return   dirichlet_lpdf(p | alpha)
+           + log_determinant(J);
+  }
+}
+data{
+  int<lower=1> N1;//number of observations (REEF surveys)
+  int<lower=1> N2;//number of observations (REEF surveys)
+  int y1[N1]; //abundance category for each survey
+  int y2[N2]; //abundance category for each survey
+  int<lower=0> N_hab1; //number of habitat classes
+  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
+  int<lower=0> N_hab2; //number of habitat classes
+  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
+  int<lower=0> N_site; //number of sites
+  int<lower=1,upper=N_site> site[N2]; // vector of site identities
+  int<lower=0> N_dv; //number of divers
+  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
+  int<lower=0> N_dmy; //number of site day clusters
+  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
+  int Z1; // columns in the covariate matrix
+  int Z2; // columns in the covariate matrix
+  matrix[N1,Z1] X1; // design matrix X
+  matrix[N2,Z2] X2; // design matrix X
+  int K; //ordinal levels
+  int TT; // timespan
+  int<lower=0> N_yr1; //number of years
+  int yr_index1[N_yr1]; //index of years
+  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
+  int<lower=0> N_yr2; //number of years
+  int yr_index2[N_yr2]; //index of years
+  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
+
+}
+parameters {
+  ordered[K-1] c; //cutpoints
+  real x0; //initial popn size
+  real<lower = 0> recip_phi; //overdispersion parameter
+  real a; //scalar for time-series 2
+
+  //deviations from intercept
+  vector[Z1] beta1; //effort coefficients - RVC
+  vector[Z2] beta2; //effort coefficients - REEF
+  vector[N_hab1] a_hab1; //deviation between habitats - RVC
+  vector[N_hab2] a_hab2; //deviation between habitats - REEF
+  vector[N_site] a_site; //deviation between sites
+  vector[N_dv] a_dv; //deviation between divers
+  vector[N_dmy] a_dmy; //deviation between site day clusters
+ 
+  //variance on the deviance components
+  real<lower = 0> sd_hab1;
+  real<lower = 0> sd_hab2;
+  real<lower = 0> sd_site;
+  real<lower = 0> sd_dv;
+  real<lower = 0> sd_dmy;
+  real<lower = 0> sd_r1;
+  real<lower = 0> sd_r2;
+  real<lower = 0> sd_q;
+  
+  vector[TT] pro_dev; //process deviations
+  vector[N_yr1] obs_dev1; //observation deviations 
+  vector[N_yr2] obs_dev2; //observation deviations 
+  
+}
+
+transformed parameters{
+  vector[TT] x;
+  vector[N_yr1] a_yr1;
+  vector[N_yr2] a_yr2;
+  real phi;
+ 
+  phi=1/recip_phi;
+  
+  x[1] = x0 + pro_dev[1];
+   
+  for(t in 2:TT){
+    x[t] = x[t-1] + pro_dev[t];
+  }
+   
+  for(i in 1:N_yr1){
+    a_yr1[i] = x[yr_index1[i]] + obs_dev1[i]; 
+  }
+    for(i in 1:N_yr2){
+      a_yr2[i] = x[yr_index2[i]] + a + obs_dev2[i]; 
+}
+  
+}  
+
+model{
+  //priors
+  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
+  beta1 ~ normal(0,2); //covariates - rvc
+  beta2 ~ normal(0,2); //covariates - reef
+  x0 ~ normal(0,5); //initial state
+  a ~ normal(0,5); //scalar
+  
+  //variance terms
+  sd_hab1 ~ inv_gamma(2, 1);
+  sd_hab2 ~ inv_gamma(2, 1);
+  sd_q ~inv_gamma(2,0.25);
+  sd_r1 ~ inv_gamma(2,0.25);
+  sd_r2 ~ inv_gamma(2,0.25);
+  sd_site ~ inv_gamma(2, 1);
+  sd_dv ~ inv_gamma(2, 1);
+  sd_dmy ~ inv_gamma(2, 1);
+  
+  //varying intercepts
+  a_hab1 ~ normal(0, sd_hab1);
+  a_hab2 ~ normal(0, sd_hab2);
+  a_site ~ normal(0, sd_site);
+  a_dv ~ normal(0, sd_dv);
+  a_dmy ~ normal(0, sd_dmy);
+  
+  for(t in 1:N_yr1){
+   obs_dev1[t] ~ normal(0,sd_r1);
+  }
+  
+  for(t in 1:TT){
+    pro_dev[t] ~ normal(0, sd_q);
+    obs_dev2[t] ~ normal(0,sd_r2);
+  }
+
+  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
+  
+  y2 ~ ordered_logistic(a_yr2[year_id2]+a_hab2[hab_class2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
+  
+}
+  generated quantities{
+  vector[N1+N2] log_lik;
+  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
+  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
+} 
+"
+
+abund_test_SS_sep<-"functions {
+  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
+    int K = num_elements(c) + 1;
+    vector[K - 1] sigma = inv_logit(phi - c);
+    vector[K] p;
+    matrix[K, K] J = rep_matrix(0, K, K);
+    
+    // Induced ordinal probabilities
+    p[1] = 1 - sigma[1];
+    for (k in 2:(K - 1))
+      p[k] = sigma[k - 1] - sigma[k];
+    p[K] = sigma[K - 1];
+    
+    // Baseline column of Jacobian
+    for (k in 1:K) J[k, 1] = 1;
+    
+    // Diagonal entries of Jacobian
+    for (k in 2:K) {
+      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
+      J[k, k] = - rho;
+      J[k - 1, k] = rho;
+    }
+    
+    return   dirichlet_lpdf(p | alpha)
+           + log_determinant(J);
+  }
+}
+data{
+  int<lower=1> N1;//number of observations (REEF surveys)
+  int<lower=1> N2;//number of observations (REEF surveys)
+  int y1[N1]; //abundance category for each survey
+  int y2[N2]; //abundance category for each survey
+  int<lower=0> N_hab1; //number of habitat classes
+  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
+  int<lower=0> N_hab2; //number of habitat classes
+  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
+  int<lower=0> N_site; //number of sites
+  int<lower=1,upper=N_site> site[N2]; // vector of site identities
+  int<lower=0> N_dv; //number of divers
+  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
+  int<lower=0> N_dmy; //number of site day clusters
+  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
+  int Z1; // columns in the covariate matrix
+  int Z2; // columns in the covariate matrix
+  matrix[N1,Z1] X1; // design matrix X
+  matrix[N2,Z2] X2; // design matrix X
+  int K; //ordinal levels
+  int TT; // timespan
+  int<lower=0> N_yr1; //number of years
+  int yr_index1[N_yr1]; //index of years
+  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
+  int<lower=0> N_yr2; //number of years
+  int yr_index2[N_yr2]; //index of years
+  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
+
+}
+parameters {
+  ordered[K-1] c; //cutpoints
+  real x01; //initial popn size - rvc
+  real x02; //initial popn size - reef
+  real<lower = 0> recip_phi; //overdispersion parameter
+ 
+  //deviations from intercept
+  vector[Z1] beta1; //effort coefficients - RVC
+  vector[Z2] beta2; //effort coefficients - REEF
+  vector[N_hab1] a_hab1; //deviation between habitats - RVC
+  vector[N_hab2] a_hab2; //deviation between habitats - REEF
+  vector[N_site] a_site; //deviation between sites
+  vector[N_dv] a_dv; //deviation between divers
+  vector[N_dmy] a_dmy; //deviation between site day clusters
+ 
+  //variance on the deviance components
+  real<lower = 0> sd_hab1;
+  real<lower = 0> sd_hab2;
+  real<lower = 0> sd_site;
+  real<lower = 0> sd_dv;
+  real<lower = 0> sd_dmy;
+  real<lower = 0> sd_r1;
+  real<lower = 0> sd_r2;
+  real<lower = 0> sd_q1;
+  real<lower = 0> sd_q2;
+  
+  vector[TT] pro_dev1; //process deviations
+  vector[TT] pro_dev2; //process deviations
+  vector[N_yr1] obs_dev1; //observation deviations 
+  vector[N_yr2] obs_dev2; //observation deviations 
+  
+}
+
+transformed parameters{
+  vector[TT] x1;
+  vector[TT] x2;
+  vector[N_yr1] a_yr1;
+  vector[N_yr2] a_yr2;
+  real phi;
+ 
+  phi=1/recip_phi;
+  
+  x1[1] = x01 + pro_dev1[1];
+  x2[1] = x02 + pro_dev2[1];
+   
+  for(t in 2:TT){
+    x1[t] = x1[t-1]  + pro_dev1[t];
+    x2[t] = x2[t-1]  + pro_dev2[t];
+  }
+   
+  for(i in 1:N_yr1){
+    a_yr1[i] = x1[yr_index1[i]] + obs_dev1[i]; 
+  }
+  for(i in 1:N_yr2){
+    a_yr2[i] = x2[yr_index2[i]] + obs_dev2[i]; 
+  }
+  
+}  
+
+model{
+  //priors
+  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
+  beta1 ~ normal(0,2); //covariates - rvc
+  beta2 ~ normal(0,2); //covariates - reef
+  x01 ~ normal(0,5); //initial state - rvc
+  x02 ~ normal(0,5); //initial state - reef
+
+  //variance terms
+  sd_hab1 ~ inv_gamma(2, 1);
+  sd_hab2 ~ inv_gamma(2, 1);
+  sd_q1 ~ inv_gamma(2,0.25);
+  sd_q2 ~ inv_gamma(2,0.25);
+  sd_r1 ~ inv_gamma(2,0.25);
+  sd_r2 ~ inv_gamma(2,0.25);
+  sd_site ~ inv_gamma(2, 1);
+  sd_dv ~ inv_gamma(2, 1);
+  sd_dmy ~ inv_gamma(2, 1);
+  
+  //varying intercepts
+  a_hab1 ~ normal(0, sd_hab1);
+  a_hab2 ~ normal(0, sd_hab2);
+  a_site ~ normal(0, sd_site);
+  a_dv ~ normal(0, sd_dv);
+  a_dmy ~ normal(0, sd_dmy);
+  
+  for(t in 1:N_yr1){
+   obs_dev1[t] ~ normal(0,sd_r1);
+  }
+  
+  for(t in 1:TT){
+    pro_dev1[t] ~ normal(0, sd_q1);
+    pro_dev2[t] ~ normal(0, sd_q2);
+    obs_dev2[t] ~ normal(0,sd_r2);
+  }
+  
+  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
+  
+  y2 ~ ordered_logistic(a_hab2[hab_class2]+a_yr2[year_id2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
+  
+}
+ generated quantities{
+  vector[N1+N2] log_lik;
+  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
+  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
+}  
+"
+
+
+
+####Batched abundance model####
+mod1<- vector(mode='list',length=nrow(fish_reef_trim2))
+mod2<- vector(mode='list',length=nrow(fish_reef_trim2))
+params_1<- vector(mode='list',length=nrow(fish_reef_trim2))
+params_2<- vector(mode='list',length=nrow(fish_reef_trim2))
+
+mars_3403<- data.frame(SP=NA,m1.loo=NA,m2.loo=NA,m1.params=NA,m2.params=NA,mod=NA,m1.sd_q=NA,m2.sd_q1=NA,
+                       m2.sd_q2=NA,m1.sd_r1=NA,m1.sd_r2=NA,m2.sd_r1=NA,m2.sd_r2=NA,prop.sd.m1.rvc=NA,prop.sd.m1.rvc.l95=NA,
+                       prop.sd.m1.rvc.u95=NA,prop.sd.m1.reef=NA,prop.sd.m1.reef.l95=NA,prop.sd.m1.reef.u95=NA,
+                       prop.sd.m2.rvc=NA,prop.sd.m2.rvc.l95=NA,prop.sd.m2.rvc.u95=NA,
+                       prop.sd.m2.reef=NA,prop.sd.m2.reef.l95=NA,prop.sd.m2.reef.u95=NA,
+                       mean.x.rvc=NA,mean.x.rvc.l95=NA,mean.x.rvc.u95=NA,
+                       mean.x.reef=NA,mean.x.rvc.l95=NA,mean.x.rvc.u95=NA,
+                       sd.hab.rvc=NA,sd.hab.reef=NA,sd.site.reef=NA,sd.dmy.reef=NA,sd.dv.reef=NA,
+                       b.cont.rvc=NA,b.cont.reef=NA,
+                       b.isol.rvc=NA,b.isol.reef=NA,b.rubb.rvc=NA,b.hubb.reef=NA,b.sg.rvc=NA,
+                       b.sg.reef=NA,b.expert.reef=NA,diff_xf.x0.comb=NA,diff_xf.x0.comb.l95=NA,
+                       diff_xf.x0.comb.u95=NA,diff_xf.x0.rvc=NA,diff_xf.x0.rvc.l95=NA,
+                       diff_xf.x0.rvc.u95=NA,diff_xf.x0.reef=NA,diff_xf.x0.reef.l95=NA,
+                       diff_xf.x0.reef.u95=NA)
+
+
+setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp")
+for(i in 1:nrow(fish_reef_trim)){
+  spp_rvc<- rvc_occs[[i]]
+  spp_reef<- reef_occs[[i]]
+  
+  X1<- matrix(data=c(scale(as.numeric(spp_rvc$DEPTH))),ncol=1,nrow=nrow(spp_rvc))
+  X2<- matrix(data=c(scale(as.numeric(spp_reef$btime)),scale(as.numeric(spp_reef$averagedepth)),scale(as.numeric(spp_reef$visibility)),scale(as.numeric(spp_reef$current)),spp_reef$exp_binary),ncol=5,nrow=nrow(spp_reef))
+  
+  mod1<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = spp_rvc$NUM.total2,
+                                                                       y2 =spp_reef$abundance2,
+                                                                       N1 = nrow(spp_rvc),
+                                                                       N2 = nrow(spp_reef),
+                                                                       N_hab1 = length(unique(spp_rvc$HAB_CD2)),
+                                                                       hab_class1=as.numeric(factor(spp_rvc$HAB_CD2)),
+                                                                       N_hab2 = length(unique(spp_reef$hab_class2)),
+                                                                       hab_class2=as.numeric(factor(spp_reef$hab_class2)),
+                                                                       site=as.numeric(factor(spp_reef$geogr)),
+                                                                       N_site=length(unique(spp_reef$geogr)),
+                                                                       diver=as.numeric(factor(spp_reef$fish_memberid)),
+                                                                       N_dv=length(unique(spp_reef$fish_memberid)),
+                                                                       dmy=as.numeric(factor(spp_reef$site_dmy)),
+                                                                       N_dmy=length(unique(spp_reef$site_dmy)),
+                                                                       K=length(unique(spp_reef$abundance)),
+                                                                       X1=X1,
+                                                                       Z1=ncol(X1),
+                                                                       X2=X2,
+                                                                       Z2=ncol(X2),
+                                                                       TT=26,
+                                                                       N_yr1=length(unique(spp_rvc$YEAR)),
+                                                                       yr_index1=sort(unique(as.numeric(factor(spp_rvc$YEAR)))),
+                                                                       year_id1=as.numeric(factor(spp_rvc$YEAR)),
+                                                                       N_yr2=length(unique(spp_reef$year)),
+                                                                       yr_index2=sort(unique(as.numeric(factor(spp_reef$year)))),
+                                                                       year_id2=as.numeric(factor(spp_reef$year))),
+                          pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','a_yr1','a_yr2','log_lik'),
+                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+  
+  mod2<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = spp_rvc$NUM.total2,
+                                                                     y2 =spp_reef$abundance2,
+                                                                     N1 = nrow(spp_rvc),
+                                                                     N2 = nrow(spp_reef),
+                                                                     N_hab1 = length(unique(spp_rvc$HAB_CD2)),
+                                                                     hab_class1=as.numeric(factor(spp_rvc$HAB_CD2)),
+                                                                     N_hab2 = length(unique(spp_reef$hab_class2)),
+                                                                     hab_class2=as.numeric(factor(spp_reef$hab_class2)),
+                                                                     site=as.numeric(factor(spp_reef$geogr)),
+                                                                     N_site=length(unique(spp_reef$geogr)),
+                                                                     diver=as.numeric(factor(spp_reef$fish_memberid)),
+                                                                     N_dv=length(unique(spp_reef$fish_memberid)),
+                                                                     dmy=as.numeric(factor(spp_reef$site_dmy)),
+                                                                     N_dmy=length(unique(spp_reef$site_dmy)),
+                                                                     K=length(unique(spp_reef$abundance)),
+                                                                     X1=X1,
+                                                                     Z1=ncol(X1),
+                                                                     X2=X2,
+                                                                     Z2=ncol(X2),
+                                                                     TT=26,
+                                                                     N_yr1=length(unique(spp_rvc$YEAR)),
+                                                                     yr_index1=sort(unique(as.numeric(factor(spp_rvc$YEAR)))),
+                                                                     year_id1=as.numeric(factor(spp_rvc$YEAR)),
+                                                                     N_yr2=length(unique(spp_reef$year)),
+                                                                     yr_index2=sort(unique(as.numeric(factor(spp_reef$year)))),
+                                                                     year_id2=as.numeric(factor(spp_reef$year))),
+                         pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','beta2','log_lik'),
+                         control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+  
+  params_1<- rstan::extract(mod1)
+  params_2<- rstan::extract(mod2)
+  
+  loo1= loo::loo(mod1)
+  loo2= loo::loo(mod2)
+  loo_comp<- loo::loo_compare(loo1,loo2)
+ 
+  mars_3403[i,1]=fish_reef_trim2$commonname[i]
+  mars_3403[i,2]=loo1$estimates[1,1]
+  mars_3403[i,3]=loo2$estimates[1,1]
+  mars_3403[i,4]=loo1$estimates[2,1]
+  mars_3403[i,5]=loo2$estimates[2,1]
+  mars_3403[i,6]=if(abs(loo_comp[2,1])>loo_comp[2,2]){rownames(loo_comp)[1]}else{'model1'}
+  mars_3403[i,7]=median(params_1$sd_q)
+  mars_3403[i,8]=median(params_2$sd_q1)
+  mars_3403[i,9]=median(params_2$sd_q2)
+  mars_3403[i,10]=median(params_1$sd_r1)
+  mars_3403[i,11]=median(params_1$sd_r2)
+  mars_3403[i,12]=median(params_2$sd_r1)
+  mars_3403[i,13]=median(params_2$sd_r2)
+  mars_3403[i,14]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r1))
+  mars_3403[i,15]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.025)
+  mars_3403[i,16]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.975)
+  mars_3403[i,17]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r2))
+  mars_3403[i,18]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.025)
+  mars_3403[i,19]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.975)
+  mars_3403[i,20]=median(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1))
+  mars_3403[i,21]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.025)
+  mars_3403[i,22]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.975)
+  mars_3403[i,23]=median(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2))
+  mars_3403[i,24]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.025)
+  mars_3403[i,25]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.975)
+  mars_3403[i,26]=exp(mean(apply(params_1$x,1,mean)))
+  mars_3403[i,27]=exp(quantile(apply(params_1$x,1,mean),0.025))
+  mars_3403[i,28]=exp(quantile(apply(params_1$x,1,mean),0.975))
+  mars_3403[i,29]=mean(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean))
+  mars_3403[i,30]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.025)
+  mars_3403[i,31]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.975)
+  mars_3403[i,32]=median(params_2$sd_hab1)
+  mars_3403[i,33]=median(params_2$sd_hab2)
+  mars_3403[i,34]=median(params_2$sd_site)
+  mars_3403[i,35]=median(params_2$sd_dmy) 
+  mars_3403[i,36]=median(params_2$sd_dv)
+  mars_3403[i,37]=median(params_2$a_hab1[,1])
+  mars_3403[i,38]=median(params_2$a_hab2[,1])
+  mars_3403[i,39]=median(params_2$a_hab1[,2])
+  mars_3403[i,40]=median(params_2$a_hab2[,2])
+  mars_3403[i,41]=median(params_2$a_hab1[,3])
+  mars_3403[i,42]=median(params_2$a_hab2[,3])
+  mars_3403[i,43]=median(params_2$a_hab1[,4])
+  mars_3403[i,44]=median(params_2$a_hab2[,4])
+  mars_3403[i,45]=median(params_2$beta2[,5])
+  mars_3403[i,46]=median(params_1$x[,26]-params_1$x[,1])
+  mars_3403[i,47]=quantile(params_1$x[,26]-params_1$x[,1],0.025)
+  mars_3403[i,48]=quantile(params_1$x[,26]-params_1$x[,1],0.975)
+  mars_3403[i,49]=median(params_2$x1[,26]-params_2$x1[,1])
+  mars_3403[i,50]=quantile(params_2$x1[,26]-params_2$x1[,1],0.025)
+  mars_3403[i,51]=quantile(params_2$x1[,26]-params_2$x1[,1],0.975)
+  mars_3403[i,52]=median(params_2$x2[,26]-params_2$x2[,1])
+  mars_3403[i,53]=quantile(params_2$x2[,26]-params_2$x2[,1],0.025)
+  mars_3403[i,54]=quantile(params_2$x2[,26]-params_2$x2[,1],0.975)
+  
+  TS_stan_abund_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
+  TS_stan_abund_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  TS_stan_state_only_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
+  TS_stan_state_only_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  
+  setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp/data runs")
+  write.csv(mars_3403[i,],paste(gsub(' ', '_',fish_reef_trim2$commonname[i]),'.csv',sep=''))
+  dev.off()
+  print(i)
+  
+}
+
+
+
+
+
+
+
+
+####Combined state - blue angelfish
+
+blue_angel<- rvc_occs[[3]]
+
+year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
+blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
+X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
+
+
+test_nb_rvc<- rstan::stan(model_code = nb_test_rvc, data = list(y = blue_angel$NUM.total2, 
+                                                                 N = nrow(blue_angel),
+                                                                 N_hab = length(unique(blue_angel$HAB_CD2)),
+                                                                 hab_class=as.numeric(factor(blue_angel$HAB_CD2)),
+                                                                 N_yr =length(unique(blue_angel$YEAR)),
+                                                                 year=as.numeric(factor(blue_angel$YEAR)),
+                                                                 X=X_rvc,
+                                                                 K=ncol(X_rvc)),
+                        pars = c("alpha", "tau_hab",'z_hab','tau_yr','z_yr','phi','beta'),
+                        control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 400, thin = 1)
+
+shinystan::launch_shinystan(test_nb_rvc)
+
+posterior <- as.array(test_nb_rvc)
+dimnames(posterior)
+color_scheme_set("viridis")
+mcmc_areas(
+  posterior,
+  pars = c('alpha',paste('z_hab[',seq(1:4),']',sep='')),
+  prob = 0.95, # 80% intervals
+  prob_outer = 1, # 99%
+  point_est = "median"
+)
+mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
+mcmc_pairs(posterior, pars = c('alpha',paste('z_hab[',seq(1:4),']',sep=''),'tau_hab'),
+           off_diag_args = list(size = 1.5))
+mcmc_trace(posterior, pars = c("tau_hab"))
+mcmc_trace(posterior, pars = c("alpha"))
+mcmc_trace(posterior, pars = c("sd_r"))
+
+
+ba_params<- rstan::extract(test_1_comb)
+x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  x_mat[i,1]=median(plogis(ba_params$x[,i]))
+  x_mat[i,2]=quantile(plogis(ba_params$x[,i]),0.975)
+  x_mat[i,3]=quantile(plogis(ba_params$x[,i]),0.025)
+}
+y_mat_1<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:23){
+  y_mat_1[i,1]=median(plogis(ba_params$a_yr1[,i]))
+  y_mat_1[i,2]=quantile(plogis(ba_params$a_yr1[,i]),0.975)
+  y_mat_1[i,3]=quantile(plogis(ba_params$a_yr1[,i]),0.025)
+}
+
+y_mat_2<- data.frame(median=NA,l.95=NA,u.95=NA)
+for(i in 1:26){
+  y_mat_2[i,1]=median(plogis(ba_params$a_yr2[,i]))
+  y_mat_2[i,2]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.975)
+  y_mat_2[i,3]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.025)
+}
+
+comp_plot_SS_comb(ts1=rvc_ts[[1]],ts2=reef_ts[[1]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Blue Angelfish',GZ='Key Largo')
+
+
+blue_angel<- rvc_occs[[3]]
+
+year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
+blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
+X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
+
+test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_angel$NUM.total2, 
+                                                                N = nrow(blue_angel),
+                                                                N_hab = length(unique(blue_angel$HAB_CD2)),
+                                                                hab_class=as.numeric(factor(blue_angel$HAB_CD2)),
+                                                               
+                                                                N_yr =length(unique(blue_angel$YEAR)),
+                                                                year_id=as.numeric(factor(blue_angel$YEAR)),
+                                                                X=X_rvc,
+                                                                K=ncol(X_rvc),
+                                                                TT=26,
+                                                                yr_index=sort(unique(blue_angel$year_index))),
+                          pars = c('x',"sd_hab",'a_hab','sd_r','sd_q','a_yr','phi','beta'),
+                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 200, chains = 4, iter = 600, thin = 1)
+
+shinystan::launch_shinystan(test_nb_rvc)
+
+
+##Reef ordinal model
+
+library(brms)
+test<- brm(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
+               data=reef_occs[[3]],
+               family=cumulative("logit"),
+               prior = c(prior(normal(0,10), "Intercept")),
+               control = list(adapt_delta = 0.98),
+               cores=6,
+               save_all_pars = T,
+               warmup = 100, iter = 3000, chains = 2)
+
+brms::make_stancode(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
+              data=reef_occs[[3]],
+              family=cumulative("logit"))
+
+reef_occs[[3]]<- reef_occs[[3]] %>% mutate(exp_binary=ifelse(exp=='E',1,0))
+
+X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
+X<- matrix(data=c(scale(as.numeric(reef_occs[[3]]$btime)),scale(as.numeric(reef_occs[[3]]$averagedepth)),scale(as.numeric(reef_occs[[3]]$visibility)),scale(as.numeric(reef_occs[[3]]$current)),reef_occs[[3]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[3]]))
+
+reef_occs[[3]]$abundance2<- reef_occs[[3]]$abundance+1
+test_ord_reef<- rstan::stan(model_code = ord_test_reef, data = list(y =reef_occs[[3]]$abundance2, 
+                                                                    N = nrow(reef_occs[[3]]),
+                                                                    N_hab = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                    hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                    N_yr =length(unique(reef_occs[[3]]$year)),
+                                                                    year=as.numeric(factor(reef_occs[[3]]$year)),
+                                                                    site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                    N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                    diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                    N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                    Z=ncol(X),
+                                                                    X=X,
+                                                                    K=length(unique(reef_occs[[3]]$abundance))),
+                          pars = c('a_yr',"sigma_hab",'sigma_yr','sigma_site','sigma_dv','c'),
+                          control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
+
+test_ord_reef<- rstan::stan(model_code = ord_test_reef1, data = list(y =reef_occs[[3]]$abundance2, 
+                                                                    N = nrow(reef_occs[[3]]),
+                                                                    K=length(unique(reef_occs[[3]]$abundance))),
+                            pars = c('c','gamma'),
+                            control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
+
+test_ord_reef<- rstan::stan(model_code = ord_test_reef, data = list(y =reef_occs[[3]]$abundance2, 
+                                                                     N = nrow(reef_occs[[3]]),
+                                                                     N_hab = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                     hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                     N_yr =length(unique(reef_occs[[3]]$year)),
+                                                                     year=as.numeric(factor(reef_occs[[3]]$year)),
+                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                     K=length(unique(reef_occs[[3]]$abundance)),
+                                                                     X=X,
+                                                                    Z=ncol(X)),
+                            pars = c('c','a_hab','sigma_hab','sigma_yr','sigma_site','sigma_dv','sigma_dmy'),
+                            control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
+
+test_ord_reef2<- rstan::stan(model_code = ord_test_SS_reef, data = list(y =reef_occs[[3]]$abundance2, 
+                                                                     N = nrow(reef_occs[[3]]),
+                                                                     N_hab = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                     hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                     K=length(unique(reef_occs[[3]]$abundance)),
+                                                                     X=X,
+                                                                     Z=ncol(X),
+                                                                     TT=26,
+                                                                     N_yr=length(unique(reef_occs[[3]]$year)),
+                                                                     yr_index=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
+                                                                     year_id=as.numeric(factor(reef_occs[[3]]$year))),
+                             pars = c('c','a_hab','sd_hab','sd_site','sd_dv','sd_dmy','sd_r','sd_q','beta','x'),
+                             control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
+
+X1<- matrix(data=c(scale(as.numeric(rvc_occs[[3]]$DEPTH))),ncol=1,nrow=nrow(rvc_occs[[3]]))
+X2<- matrix(data=c(scale(as.numeric(reef_occs[[3]]$btime)),scale(as.numeric(reef_occs[[3]]$averagedepth)),scale(as.numeric(reef_occs[[3]]$visibility)),scale(as.numeric(reef_occs[[3]]$current)),reef_occs[[3]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[3]]))
+
+
+test_comb<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc_occs[[3]]$NUM.total2,
+                                                                        y2 =reef_occs[[3]]$abundance2,
+                                                                        N1 = nrow(rvc_occs[[3]]),
+                                                                        N2 = nrow(reef_occs[[3]]),
+                                                                        N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
+                                                                        hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
+                                                                        N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                        hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                        site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                        N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                        diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                        N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                        dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                        N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                        K=length(unique(reef_occs[[3]]$abundance)),
+                                                                        X1=X1,
+                                                                        Z1=ncol(X1),
+                                                                        X2=X2,
+                                                                        Z2=ncol(X2),
+                                                                        TT=26,
+                                                                        N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
+                                                                        yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
+                                                                        year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
+                                                                        N_yr2=length(unique(reef_occs[[3]]$year)),
+                                                                        yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
+                                                                        year_id2=as.numeric(factor(reef_occs[[3]]$year))),
+                             pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
+                             control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+
+test_sep<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[3]]$NUM.total2,
+                                                                     y2 =reef_occs[[3]]$abundance2,
+                                                                     N1 = nrow(rvc_occs[[3]]),
+                                                                     N2 = nrow(reef_occs[[3]]),
+                                                                     N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
+                                                                     hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
+                                                                     N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                     hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                     K=length(unique(reef_occs[[3]]$abundance)),
+                                                                     X1=X1,
+                                                                     Z1=ncol(X1),
+                                                                     X2=X2,
+                                                                     Z2=ncol(X2),
+                                                                     TT=26,
+                                                                     N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
+                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
+                                                                     year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
+                                                                     N_yr2=length(unique(reef_occs[[3]]$year)),
+                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
+                                                                     year_id2=as.numeric(factor(reef_occs[[3]]$year))),
+                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
+                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+system.time(loo1= loo::loo(test_comb))
+start.time <- Sys.time()
+system.time(loo2<- loo::loo(test_sep_rf))
+
+
+shinystan::launch_shinystan(test_sep)
+
+params<- rstan::extract(test_sep)
+
+test_occ_sep<- rstan::stan(model_code = occ_test_SS_sep, data = list(y1 = rvc_occs[[3]]$occ,
+                                                                   y2 =reef_occs[[3]]$occ,
+                                                                   N1 = nrow(rvc_occs[[3]]),
+                                                                   N2 = nrow(reef_occs[[3]]),
+                                                                   N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
+                                                                   hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
+                                                                   N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                   hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                   site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                   N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                   diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                   N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                   dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                   N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                   X1=X1,
+                                                                   Z1=ncol(X1),
+                                                                   X2=X2,
+                                                                   Z2=ncol(X2),
+                                                                   TT=26,
+                                                                   N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
+                                                                   yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
+                                                                   year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
+                                                                   N_yr2=length(unique(reef_occs[[3]]$year)),
+                                                                   yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
+                                                                   year_id2=as.numeric(factor(reef_occs[[3]]$year))),
+                       pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2',
+                                'log_lik'),
+                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+
+test_occ_comb<- rstan::stan(model_code = occ_test_SS_comb, data = list(y1 = rvc_occs[[3]]$occ,
+                                                                     y2 =reef_occs[[3]]$occ,
+                                                                     N1 = nrow(rvc_occs[[3]]),
+                                                                     N2 = nrow(reef_occs[[3]]),
+                                                                     N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
+                                                                     hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
+                                                                     N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
+                                                                     hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
+                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
+                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
+                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
+                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
+                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
+                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
+                                                                     X1=X1,
+                                                                     Z1=ncol(X1),
+                                                                     X2=X2,
+                                                                     Z2=ncol(X2),
+                                                                     TT=26,
+                                                                     N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
+                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
+                                                                     year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
+                                                                     N_yr2=length(unique(reef_occs[[3]]$year)),
+                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
+                                                                     year_id2=as.numeric(factor(reef_occs[[3]]$year))),
+                           pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','a','x','a_yr1','a_yr2'),
+                           control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+
+
+X1<- matrix(data=c(scale(as.numeric(rvc_occs[[5]]$DEPTH))),ncol=1,nrow=nrow(rvc_occs[[5]]))
+X2<- matrix(data=c(scale(as.numeric(reef_occs[[5]]$btime)),scale(as.numeric(reef_occs[[5]]$averagedepth)),scale(as.numeric(reef_occs[[5]]$visibility)),scale(as.numeric(reef_occs[[5]]$current)),reef_occs[[5]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[5]]))
+
+
+test_comb_rf<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc_occs[[5]]$NUM.total2,
+                                                                     y2 =reef_occs[[5]]$abundance2,
+                                                                     N1 = nrow(rvc_occs[[5]]),
+                                                                     N2 = nrow(reef_occs[[5]]),
+                                                                     N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
+                                                                     hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
+                                                                     N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
+                                                                     hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
+                                                                     site=as.numeric(factor(reef_occs[[5]]$geogr)),
+                                                                     N_site=length(unique(reef_occs[[5]]$geogr)),
+                                                                     diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
+                                                                     N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
+                                                                     dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
+                                                                     N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
+                                                                     K=length(unique(reef_occs[[5]]$abundance)),
+                                                                     X1=X1,
+                                                                     Z1=ncol(X1),
+                                                                     X2=X2,
+                                                                     Z2=ncol(X2),
+                                                                     TT=26,
+                                                                     N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
+                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
+                                                                     year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
+                                                                     N_yr2=length(unique(reef_occs[[5]]$year)),
+                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
+                                                                     year_id2=as.numeric(factor(reef_occs[[5]]$year))),
+                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
+                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 300, thin = 1)
+
+test_sep_rf<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[5]]$NUM.total2,
+                                                                   y2 =reef_occs[[5]]$abundance2,
+                                                                   N1 = nrow(rvc_occs[[5]]),
+                                                                   N2 = nrow(reef_occs[[5]]),
+                                                                   N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
+                                                                   hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
+                                                                   N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
+                                                                   hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
+                                                                   site=as.numeric(factor(reef_occs[[5]]$geogr)),
+                                                                   N_site=length(unique(reef_occs[[5]]$geogr)),
+                                                                   diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
+                                                                   N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
+                                                                   dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
+                                                                   N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
+                                                                   K=length(unique(reef_occs[[5]]$abundance)),
+                                                                   X1=X1,
+                                                                   Z1=ncol(X1),
+                                                                   X2=X2,
+                                                                   Z2=ncol(X2),
+                                                                   TT=26,
+                                                                   N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
+                                                                   yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
+                                                                   year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
+                                                                   N_yr2=length(unique(reef_occs[[5]]$year)),
+                                                                   yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
+                                                                   year_id2=as.numeric(factor(reef_occs[[5]]$year))),
+                       pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
+                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 600, thin = 1)
+
+shinystan::launch_shinystan(test_comb_rf)
+
+params_1<- rstan::extract(test_comb_rf)
+params_2<- rstan::extract(test_sep_rf)
+
+loo1= loo::loo(test_comb_rf)
+start.time <- Sys.time()
+system.time(loo2<- loo::loo(test_sep_rf))
+
+time.taken <- end.time - start.time
+time.taken
+start.time <- Sys.time()
+loo_comp<- loo::loo_compare(loo1,loo2)
+time.taken <- end.time - start.time
+time.taken
+
+params_sep<- rstan::extract(test_sep_rf)
+
+TS_stan_abund_plot_MARSS(ts1=rvc_ts[[5]],ts2=reef_ts[[5]],sp='Rock Beauty',GZ='Key Largo',params=params_sep)
+
+
+test_sep_rf_trend<- rstan::stan(model_code = abund_test_SS_sep_trend, data = list(y1 = rvc_occs[[5]]$NUM.total2,
+                                                                      y2 =reef_occs[[5]]$abundance2,
+                                                                      N1 = nrow(rvc_occs[[5]]),
+                                                                      N2 = nrow(reef_occs[[5]]),
+                                                                      N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
+                                                                      hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
+                                                                      N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
+                                                                      hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
+                                                                      site=as.numeric(factor(reef_occs[[5]]$geogr)),
+                                                                      N_site=length(unique(reef_occs[[5]]$geogr)),
+                                                                      diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
+                                                                      N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
+                                                                      dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
+                                                                      N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
+                                                                      K=length(unique(reef_occs[[5]]$abundance)),
+                                                                      X1=X1,
+                                                                      Z1=ncol(X1),
+                                                                      X2=X2,
+                                                                      Z2=ncol(X2),
+                                                                      TT=26,
+                                                                      N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
+                                                                      yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
+                                                                      year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
+                                                                      N_yr2=length(unique(reef_occs[[5]]$year)),
+                                                                      yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
+                                                                      year_id2=as.numeric(factor(reef_occs[[5]]$year))),
+                          pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','u1','u2','x1','x2','a_yr1','a_yr2'),
+                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
+
+
+
+###Old stan model iterations####
 nb_test_rvc<-"data{
   int<lower=1> N;//number of observations (SSU surveys)
   int y[N]; //presence or absence on each survey
@@ -1066,494 +2266,6 @@ model{
 }
 "
 
-
-abund_test_SS_comb<-"functions {
-  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
-    int K = num_elements(c) + 1;
-    vector[K - 1] sigma = inv_logit(phi - c);
-    vector[K] p;
-    matrix[K, K] J = rep_matrix(0, K, K);
-    
-    // Induced ordinal probabilities
-    p[1] = 1 - sigma[1];
-    for (k in 2:(K - 1))
-      p[k] = sigma[k - 1] - sigma[k];
-    p[K] = sigma[K - 1];
-    
-    // Baseline column of Jacobian
-    for (k in 1:K) J[k, 1] = 1;
-    
-    // Diagonal entries of Jacobian
-    for (k in 2:K) {
-      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
-      J[k, k] = - rho;
-      J[k - 1, k] = rho;
-    }
-    
-    return   dirichlet_lpdf(p | alpha)
-           + log_determinant(J);
-  }
-}
-data{
-  int<lower=1> N1;//number of observations (REEF surveys)
-  int<lower=1> N2;//number of observations (REEF surveys)
-  int y1[N1]; //abundance category for each survey
-  int y2[N2]; //abundance category for each survey
-  int<lower=0> N_hab1; //number of habitat classes
-  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
-  int<lower=0> N_hab2; //number of habitat classes
-  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
-  int<lower=0> N_site; //number of sites
-  int<lower=1,upper=N_site> site[N2]; // vector of site identities
-  int<lower=0> N_dv; //number of divers
-  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
-  int<lower=0> N_dmy; //number of site day clusters
-  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
-  int Z1; // columns in the covariate matrix
-  int Z2; // columns in the covariate matrix
-  matrix[N1,Z1] X1; // design matrix X
-  matrix[N2,Z2] X2; // design matrix X
-  int K; //ordinal levels
-  int TT; // timespan
-  int<lower=0> N_yr1; //number of years
-  int yr_index1[N_yr1]; //index of years
-  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
-  int<lower=0> N_yr2; //number of years
-  int yr_index2[N_yr2]; //index of years
-  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
-
-}
-parameters {
-  ordered[K-1] c; //cutpoints
-  real x0; //initial popn size
-  real<lower = 0> recip_phi; //overdispersion parameter
-  real a; //scalar for time-series 2
-
-  //deviations from intercept
-  vector[Z1] beta1; //effort coefficients - RVC
-  vector[Z2] beta2; //effort coefficients - REEF
-  vector[N_hab1] a_hab1; //deviation between habitats - RVC
-  vector[N_hab2] a_hab2; //deviation between habitats - REEF
-  vector[N_site] a_site; //deviation between sites
-  vector[N_dv] a_dv; //deviation between divers
-  vector[N_dmy] a_dmy; //deviation between site day clusters
- 
-  //variance on the deviance components
-  real<lower = 0> sd_hab1;
-  real<lower = 0> sd_hab2;
-  real<lower = 0> sd_site;
-  real<lower = 0> sd_dv;
-  real<lower = 0> sd_dmy;
-  real<lower = 0> sd_r1;
-  real<lower = 0> sd_r2;
-  real<lower = 0> sd_q;
-  
-  vector[TT] pro_dev; //process deviations
-  vector[N_yr1] obs_dev1; //observation deviations 
-  vector[N_yr2] obs_dev2; //observation deviations 
-  
-}
-
-transformed parameters{
-  vector[TT] x;
-  vector[N_yr1] a_yr1;
-  vector[N_yr2] a_yr2;
-  real phi;
- 
-  phi=1/recip_phi;
-  
-  x[1] = x0 + pro_dev[1];
-   
-  for(t in 2:TT){
-    x[t] = x[t-1] + pro_dev[t];
-  }
-   
-  for(i in 1:N_yr1){
-    a_yr1[i] = x[yr_index1[i]] + obs_dev1[i]; 
-  }
-    for(i in 1:N_yr2){
-      a_yr2[i] = x[yr_index2[i]] + a + obs_dev2[i]; 
-}
-  
-}  
-
-model{
-  //priors
-  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
-  beta1 ~ normal(0,2); //covariates - rvc
-  beta2 ~ normal(0,2); //covariates - reef
-  x0 ~ normal(0,5); //initial state
-  a ~ normal(0,5); //scalar
-  
-  //variance terms
-  sd_hab1 ~ inv_gamma(2, 1);
-  sd_hab2 ~ inv_gamma(2, 1);
-  sd_q ~inv_gamma(2,0.25);
-  sd_r1 ~ inv_gamma(2,0.25);
-  sd_r2 ~ inv_gamma(2,0.25);
-  sd_site ~ inv_gamma(2, 1);
-  sd_dv ~ inv_gamma(2, 1);
-  sd_dmy ~ inv_gamma(2, 1);
-  
-  //varying intercepts
-  a_hab1 ~ normal(0, sd_hab1);
-  a_hab2 ~ normal(0, sd_hab2);
-  a_site ~ normal(0, sd_site);
-  a_dv ~ normal(0, sd_dv);
-  a_dmy ~ normal(0, sd_dmy);
-  
-  for(t in 1:N_yr1){
-   obs_dev1[t] ~ normal(0,sd_r1);
-  }
-  
-  for(t in 1:TT){
-    pro_dev[t] ~ normal(0, sd_q);
-    obs_dev2[t] ~ normal(0,sd_r2);
-  }
-
-  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
-  
-  y2 ~ ordered_logistic(a_yr2[year_id2]+a_hab2[hab_class2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
-  
-}
-  generated quantities{
-  vector[N1+N2] log_lik;
-  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
-  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
-} 
-"
-
-abund_test_SS_sep<-"functions {
-  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
-    int K = num_elements(c) + 1;
-    vector[K - 1] sigma = inv_logit(phi - c);
-    vector[K] p;
-    matrix[K, K] J = rep_matrix(0, K, K);
-    
-    // Induced ordinal probabilities
-    p[1] = 1 - sigma[1];
-    for (k in 2:(K - 1))
-      p[k] = sigma[k - 1] - sigma[k];
-    p[K] = sigma[K - 1];
-    
-    // Baseline column of Jacobian
-    for (k in 1:K) J[k, 1] = 1;
-    
-    // Diagonal entries of Jacobian
-    for (k in 2:K) {
-      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
-      J[k, k] = - rho;
-      J[k - 1, k] = rho;
-    }
-    
-    return   dirichlet_lpdf(p | alpha)
-           + log_determinant(J);
-  }
-}
-data{
-  int<lower=1> N1;//number of observations (REEF surveys)
-  int<lower=1> N2;//number of observations (REEF surveys)
-  int y1[N1]; //abundance category for each survey
-  int y2[N2]; //abundance category for each survey
-  int<lower=0> N_hab1; //number of habitat classes
-  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
-  int<lower=0> N_hab2; //number of habitat classes
-  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
-  int<lower=0> N_site; //number of sites
-  int<lower=1,upper=N_site> site[N2]; // vector of site identities
-  int<lower=0> N_dv; //number of divers
-  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
-  int<lower=0> N_dmy; //number of site day clusters
-  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
-  int Z1; // columns in the covariate matrix
-  int Z2; // columns in the covariate matrix
-  matrix[N1,Z1] X1; // design matrix X
-  matrix[N2,Z2] X2; // design matrix X
-  int K; //ordinal levels
-  int TT; // timespan
-  int<lower=0> N_yr1; //number of years
-  int yr_index1[N_yr1]; //index of years
-  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
-  int<lower=0> N_yr2; //number of years
-  int yr_index2[N_yr2]; //index of years
-  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
-
-}
-parameters {
-  ordered[K-1] c; //cutpoints
-  real x01; //initial popn size - rvc
-  real x02; //initial popn size - reef
-  real<lower = 0> recip_phi; //overdispersion parameter
- 
-  //deviations from intercept
-  vector[Z1] beta1; //effort coefficients - RVC
-  vector[Z2] beta2; //effort coefficients - REEF
-  vector[N_hab1] a_hab1; //deviation between habitats - RVC
-  vector[N_hab2] a_hab2; //deviation between habitats - REEF
-  vector[N_site] a_site; //deviation between sites
-  vector[N_dv] a_dv; //deviation between divers
-  vector[N_dmy] a_dmy; //deviation between site day clusters
- 
-  //variance on the deviance components
-  real<lower = 0> sd_hab1;
-  real<lower = 0> sd_hab2;
-  real<lower = 0> sd_site;
-  real<lower = 0> sd_dv;
-  real<lower = 0> sd_dmy;
-  real<lower = 0> sd_r1;
-  real<lower = 0> sd_r2;
-  real<lower = 0> sd_q1;
-  real<lower = 0> sd_q2;
-  
-  vector[TT] pro_dev1; //process deviations
-  vector[TT] pro_dev2; //process deviations
-  vector[N_yr1] obs_dev1; //observation deviations 
-  vector[N_yr2] obs_dev2; //observation deviations 
-  
-}
-
-transformed parameters{
-  vector[TT] x1;
-  vector[TT] x2;
-  vector[N_yr1] a_yr1;
-  vector[N_yr2] a_yr2;
-  real phi;
- 
-  phi=1/recip_phi;
-  
-  x1[1] = x01 + pro_dev1[1];
-  x2[1] = x02 + pro_dev2[1];
-   
-  for(t in 2:TT){
-    x1[t] = x1[t-1]  + pro_dev1[t];
-    x2[t] = x2[t-1]  + pro_dev2[t];
-  }
-   
-  for(i in 1:N_yr1){
-    a_yr1[i] = x1[yr_index1[i]] + obs_dev1[i]; 
-  }
-  for(i in 1:N_yr2){
-    a_yr2[i] = x2[yr_index2[i]] + obs_dev2[i]; 
-  }
-  
-}  
-
-model{
-  //priors
-  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
-  beta1 ~ normal(0,2); //covariates - rvc
-  beta2 ~ normal(0,2); //covariates - reef
-  x01 ~ normal(0,5); //initial state - rvc
-  x02 ~ normal(0,5); //initial state - reef
-
-  //variance terms
-  sd_hab1 ~ cauchy(0, 1);
-  sd_hab2 ~ cauchy(0, 1);
-  sd_q1 ~ inv_gamma(2,0.25);
-  sd_q2 ~ inv_gamma(2,0.25);
-  sd_r1 ~ inv_gamma(2,0.25);
-  sd_r2 ~ inv_gamma(2,0.25);
-  sd_site ~ cauchy(0, 1);
-  sd_dv ~ cauchy(0, 1);
-  sd_dmy ~ cauchy(0, 1);
-  
-  //varying intercepts
-  a_hab1 ~ normal(0, sd_hab1);
-  a_hab2 ~ normal(0, sd_hab2);
-  a_site ~ normal(0, sd_site);
-  a_dv ~ normal(0, sd_dv);
-  a_dmy ~ normal(0, sd_dmy);
-  
-  for(t in 1:N_yr1){
-   obs_dev1[t] ~ normal(0,sd_r1);
-  }
-  
-  for(t in 1:TT){
-    pro_dev1[t] ~ normal(0, sd_q1);
-    pro_dev2[t] ~ normal(0, sd_q2);
-    obs_dev2[t] ~ normal(0,sd_r2);
-  }
-  
-  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
-  
-  y2 ~ ordered_logistic(a_hab2[hab_class2]+a_yr2[year_id2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
-  
-}
- generated quantities{
-  vector[N1+N2] log_lik;
-  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
-  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
-}  
-"
-
-
-abund_test_SS_sep_trend<-"functions {
-  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
-    int K = num_elements(c) + 1;
-    vector[K - 1] sigma = inv_logit(phi - c);
-    vector[K] p;
-    matrix[K, K] J = rep_matrix(0, K, K);
-    
-    // Induced ordinal probabilities
-    p[1] = 1 - sigma[1];
-    for (k in 2:(K - 1))
-      p[k] = sigma[k - 1] - sigma[k];
-    p[K] = sigma[K - 1];
-    
-    // Baseline column of Jacobian
-    for (k in 1:K) J[k, 1] = 1;
-    
-    // Diagonal entries of Jacobian
-    for (k in 2:K) {
-      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
-      J[k, k] = - rho;
-      J[k - 1, k] = rho;
-    }
-    
-    return   dirichlet_lpdf(p | alpha)
-           + log_determinant(J);
-  }
-}
-data{
-  int<lower=1> N1;//number of observations (REEF surveys)
-  int<lower=1> N2;//number of observations (REEF surveys)
-  int y1[N1]; //abundance category for each survey
-  int y2[N2]; //abundance category for each survey
-  int<lower=0> N_hab1; //number of habitat classes
-  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
-  int<lower=0> N_hab2; //number of habitat classes
-  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
-  int<lower=0> N_site; //number of sites
-  int<lower=1,upper=N_site> site[N2]; // vector of site identities
-  int<lower=0> N_dv; //number of divers
-  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
-  int<lower=0> N_dmy; //number of site day clusters
-  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
-  int Z1; // columns in the covariate matrix
-  int Z2; // columns in the covariate matrix
-  matrix[N1,Z1] X1; // design matrix X
-  matrix[N2,Z2] X2; // design matrix X
-  int K; //ordinal levels
-  int TT; // timespan
-  int<lower=0> N_yr1; //number of years
-  int yr_index1[N_yr1]; //index of years
-  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
-  int<lower=0> N_yr2; //number of years
-  int yr_index2[N_yr2]; //index of years
-  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
-
-}
-parameters {
-  ordered[K-1] c; //cutpoints
-  real x01; //initial popn size - rvc
-  real x02; //initial popn size - reef
-  real<lower = 0> recip_phi; //overdispersion parameter
-  real u1; //trend constant - rvc
-  real u2; //trend constant - reef
-  
-  //deviations from intercept
-  vector[Z1] beta1; //effort coefficients - RVC
-  vector[Z2] beta2; //effort coefficients - REEF
-  vector[N_hab1] a_hab1; //deviation between habitats - RVC
-  vector[N_hab2] a_hab2; //deviation between habitats - REEF
-  vector[N_site] a_site; //deviation between sites
-  vector[N_dv] a_dv; //deviation between divers
-  vector[N_dmy] a_dmy; //deviation between site day clusters
- 
-  //variance on the deviance components
-  real<lower = 0> sd_hab1;
-  real<lower = 0> sd_hab2;
-  real<lower = 0> sd_site;
-  real<lower = 0> sd_dv;
-  real<lower = 0> sd_dmy;
-  real<lower = 0> sd_r1;
-  real<lower = 0> sd_r2;
-  real<lower = 0> sd_q1;
-  real<lower = 0> sd_q2;
-  
-  vector[TT] pro_dev1; //process deviations
-  vector[TT] pro_dev2; //process deviations
-  vector[N_yr1] obs_dev1; //observation deviations 
-  vector[N_yr2] obs_dev2; //observation deviations 
-  
-}
-
-transformed parameters{
-  vector[TT] x1;
-  vector[TT] x2;
-  vector[N_yr1] a_yr1;
-  vector[N_yr2] a_yr2;
-  real phi;
- 
-  phi=1/recip_phi;
-  
-  x1[1] = x01 + pro_dev1[1];
-  x2[1] = x02 + pro_dev2[1];
-   
-  for(t in 2:TT){
-    x1[t] = x1[t-1] + u1 + pro_dev1[t];
-    x2[t] = x2[t-1] + u2 + pro_dev2[t];
-  }
-   
-  for(i in 1:N_yr1){
-    a_yr1[i] = x1[yr_index1[i]] + obs_dev1[i]; 
-  }
-  for(i in 1:N_yr2){
-    a_yr2[i] = x2[yr_index2[i]] + obs_dev2[i]; 
-  }
-  
-}  
-
-model{
-  //priors
-  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
-  beta1 ~ normal(0,2); //covariates - rvc
-  beta2 ~ normal(0,2); //covariates - reef
-  x01 ~ normal(0,5); //initial state - rvc
-  x02 ~ normal(0,5); //initial state - reef
-  u1 ~ normal(0,0.5); //trend constant - rvc
-  u2 ~ normal(0,0.5); //trend constant - reef
- 
-  //variance terms
-  sd_hab1 ~ cauchy(0, 1);
-  sd_hab2 ~ cauchy(0, 1);
-  sd_q1 ~ cauchy(0, 1);
-  sd_q2 ~ cauchy(0, 1);
-  sd_r1 ~ cauchy(0, 1);
-  sd_r2 ~ cauchy(0, 1);
-  sd_site ~ cauchy(0, 1);
-  sd_dv ~ cauchy(0, 1);
-  sd_dmy ~ cauchy(0, 1);
-  
-  //varying intercepts
-  a_hab1 ~ normal(0, sd_hab1);
-  a_hab2 ~ normal(0, sd_hab2);
-  a_site ~ normal(0, sd_site);
-  a_dv ~ normal(0, sd_dv);
-  a_dmy ~ normal(0, sd_dmy);
-  
-  for(t in 1:N_yr1){
-   obs_dev1[t] ~ normal(0,sd_r1);
-  }
-  
-  for(t in 1:TT){
-    pro_dev1[t] ~ normal(0, sd_q1);
-    pro_dev2[t] ~ normal(0, sd_q2);
-    obs_dev2[t] ~ normal(0,sd_r2);
-  }
-  
-  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
-  
-  y2 ~ ordered_logistic(a_hab2[hab_class2]+a_yr2[year_id2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
-  
-}
- generated quantities{
-  vector[N1+N2] log_lik;
-  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
-  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
-}  
-"
-
 occ_test_SS_comb<-"
 data{
   int<lower=1> N1;//number of observations - rvc
@@ -1807,413 +2519,170 @@ model{
   for (z in 1:N2) log_lik[N1+z] = bernoulli_logit_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2);
 }  
 "
-
-
-####Combined state - blue angelfish
-
-blue_angel<- rvc_occs[[3]]
-
-year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
-blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
-X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
-
-
-test_nb_rvc<- rstan::stan(model_code = nb_test_rvc, data = list(y = blue_angel$NUM.total2, 
-                                                                 N = nrow(blue_angel),
-                                                                 N_hab = length(unique(blue_angel$HAB_CD2)),
-                                                                 hab_class=as.numeric(factor(blue_angel$HAB_CD2)),
-                                                                 N_yr =length(unique(blue_angel$YEAR)),
-                                                                 year=as.numeric(factor(blue_angel$YEAR)),
-                                                                 X=X_rvc,
-                                                                 K=ncol(X_rvc)),
-                        pars = c("alpha", "tau_hab",'z_hab','tau_yr','z_yr','phi','beta'),
-                        control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 400, thin = 1)
-
-shinystan::launch_shinystan(test_nb_rvc)
-
-posterior <- as.array(test_nb_rvc)
-dimnames(posterior)
-color_scheme_set("viridis")
-mcmc_areas(
-  posterior,
-  pars = c('alpha',paste('z_hab[',seq(1:4),']',sep='')),
-  prob = 0.95, # 80% intervals
-  prob_outer = 1, # 99%
-  point_est = "median"
-)
-mcmc_dens_overlay(posterior, c("alpha", paste('a_yr[',seq(1:23),']',sep=''),'sigma_hab','sigma_yr'))
-mcmc_pairs(posterior, pars = c('alpha',paste('z_hab[',seq(1:4),']',sep=''),'tau_hab'),
-           off_diag_args = list(size = 1.5))
-mcmc_trace(posterior, pars = c("tau_hab"))
-mcmc_trace(posterior, pars = c("alpha"))
-mcmc_trace(posterior, pars = c("sd_r"))
-
-
-ba_params<- rstan::extract(test_1_comb)
-x_mat<- data.frame(median=NA,l.95=NA,u.95=NA)
-for(i in 1:26){
-  x_mat[i,1]=median(plogis(ba_params$x[,i]))
-  x_mat[i,2]=quantile(plogis(ba_params$x[,i]),0.975)
-  x_mat[i,3]=quantile(plogis(ba_params$x[,i]),0.025)
+abund_test_SS_sep_trend<-"functions {
+  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
+    int K = num_elements(c) + 1;
+    vector[K - 1] sigma = inv_logit(phi - c);
+    vector[K] p;
+    matrix[K, K] J = rep_matrix(0, K, K);
+    
+    // Induced ordinal probabilities
+    p[1] = 1 - sigma[1];
+    for (k in 2:(K - 1))
+      p[k] = sigma[k - 1] - sigma[k];
+    p[K] = sigma[K - 1];
+    
+    // Baseline column of Jacobian
+    for (k in 1:K) J[k, 1] = 1;
+    
+    // Diagonal entries of Jacobian
+    for (k in 2:K) {
+      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
+      J[k, k] = - rho;
+      J[k - 1, k] = rho;
+    }
+    
+    return   dirichlet_lpdf(p | alpha)
+           + log_determinant(J);
+  }
 }
-y_mat_1<- data.frame(median=NA,l.95=NA,u.95=NA)
-for(i in 1:23){
-  y_mat_1[i,1]=median(plogis(ba_params$a_yr1[,i]))
-  y_mat_1[i,2]=quantile(plogis(ba_params$a_yr1[,i]),0.975)
-  y_mat_1[i,3]=quantile(plogis(ba_params$a_yr1[,i]),0.025)
+data{
+  int<lower=1> N1;//number of observations (REEF surveys)
+  int<lower=1> N2;//number of observations (REEF surveys)
+  int y1[N1]; //abundance category for each survey
+  int y2[N2]; //abundance category for each survey
+  int<lower=0> N_hab1; //number of habitat classes
+  int<lower=1,upper=N_hab1> hab_class1[N1]; // vector of habitat class identities
+  int<lower=0> N_hab2; //number of habitat classes
+  int<lower=1,upper=N_hab2> hab_class2[N2]; // vector of habitat class identities
+  int<lower=0> N_site; //number of sites
+  int<lower=1,upper=N_site> site[N2]; // vector of site identities
+  int<lower=0> N_dv; //number of divers
+  int<lower=1,upper=N_dv> diver[N2]; // vector of diver identities
+  int<lower=0> N_dmy; //number of site day clusters
+  int<lower=1,upper=N_dmy> dmy[N2]; // vector of site day cluster identities
+  int Z1; // columns in the covariate matrix
+  int Z2; // columns in the covariate matrix
+  matrix[N1,Z1] X1; // design matrix X
+  matrix[N2,Z2] X2; // design matrix X
+  int K; //ordinal levels
+  int TT; // timespan
+  int<lower=0> N_yr1; //number of years
+  int yr_index1[N_yr1]; //index of years
+  int<lower=1,upper=N_yr1> year_id1[N1]; // vector of year
+  int<lower=0> N_yr2; //number of years
+  int yr_index2[N_yr2]; //index of years
+  int<lower=1,upper=N_yr2> year_id2[N2]; // vector of year
+
+}
+parameters {
+  ordered[K-1] c; //cutpoints
+  real x01; //initial popn size - rvc
+  real x02; //initial popn size - reef
+  real<lower = 0> recip_phi; //overdispersion parameter
+  real u1; //trend constant - rvc
+  real u2; //trend constant - reef
+  
+  //deviations from intercept
+  vector[Z1] beta1; //effort coefficients - RVC
+  vector[Z2] beta2; //effort coefficients - REEF
+  vector[N_hab1] a_hab1; //deviation between habitats - RVC
+  vector[N_hab2] a_hab2; //deviation between habitats - REEF
+  vector[N_site] a_site; //deviation between sites
+  vector[N_dv] a_dv; //deviation between divers
+  vector[N_dmy] a_dmy; //deviation between site day clusters
+ 
+  //variance on the deviance components
+  real<lower = 0> sd_hab1;
+  real<lower = 0> sd_hab2;
+  real<lower = 0> sd_site;
+  real<lower = 0> sd_dv;
+  real<lower = 0> sd_dmy;
+  real<lower = 0> sd_r1;
+  real<lower = 0> sd_r2;
+  real<lower = 0> sd_q1;
+  real<lower = 0> sd_q2;
+  
+  vector[TT] pro_dev1; //process deviations
+  vector[TT] pro_dev2; //process deviations
+  vector[N_yr1] obs_dev1; //observation deviations 
+  vector[N_yr2] obs_dev2; //observation deviations 
+  
 }
 
-y_mat_2<- data.frame(median=NA,l.95=NA,u.95=NA)
-for(i in 1:26){
-  y_mat_2[i,1]=median(plogis(ba_params$a_yr2[,i]))
-  y_mat_2[i,2]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.975)
-  y_mat_2[i,3]=quantile(plogis(ba_params$a_yr2[,i]+ba_params$s),0.025)
+transformed parameters{
+  vector[TT] x1;
+  vector[TT] x2;
+  vector[N_yr1] a_yr1;
+  vector[N_yr2] a_yr2;
+  real phi;
+ 
+  phi=1/recip_phi;
+  
+  x1[1] = x01 + pro_dev1[1];
+  x2[1] = x02 + pro_dev2[1];
+   
+  for(t in 2:TT){
+    x1[t] = x1[t-1] + u1 + pro_dev1[t];
+    x2[t] = x2[t-1] + u2 + pro_dev2[t];
+  }
+   
+  for(i in 1:N_yr1){
+    a_yr1[i] = x1[yr_index1[i]] + obs_dev1[i]; 
+  }
+  for(i in 1:N_yr2){
+    a_yr2[i] = x2[yr_index2[i]] + obs_dev2[i]; 
+  }
+  
+}  
+
+model{
+  //priors
+  c ~ induced_dirichlet(rep_vector(1, K), 0); //prior on ordered cut-points
+  beta1 ~ normal(0,2); //covariates - rvc
+  beta2 ~ normal(0,2); //covariates - reef
+  x01 ~ normal(0,5); //initial state - rvc
+  x02 ~ normal(0,5); //initial state - reef
+  u1 ~ normal(0,0.5); //trend constant - rvc
+  u2 ~ normal(0,0.5); //trend constant - reef
+ 
+  //variance terms
+  sd_hab1 ~ cauchy(0, 1);
+  sd_hab2 ~ cauchy(0, 1);
+  sd_q1 ~ cauchy(0, 1);
+  sd_q2 ~ cauchy(0, 1);
+  sd_r1 ~ cauchy(0, 1);
+  sd_r2 ~ cauchy(0, 1);
+  sd_site ~ cauchy(0, 1);
+  sd_dv ~ cauchy(0, 1);
+  sd_dmy ~ cauchy(0, 1);
+  
+  //varying intercepts
+  a_hab1 ~ normal(0, sd_hab1);
+  a_hab2 ~ normal(0, sd_hab2);
+  a_site ~ normal(0, sd_site);
+  a_dv ~ normal(0, sd_dv);
+  a_dmy ~ normal(0, sd_dmy);
+  
+  for(t in 1:N_yr1){
+   obs_dev1[t] ~ normal(0,sd_r1);
+  }
+  
+  for(t in 1:TT){
+    pro_dev1[t] ~ normal(0, sd_q1);
+    pro_dev2[t] ~ normal(0, sd_q2);
+    obs_dev2[t] ~ normal(0,sd_r2);
+  }
+  
+  y1 ~ neg_binomial_2_log(a_yr1[year_id1] + a_hab1[hab_class1] + X1*beta1,phi);
+  
+  y2 ~ ordered_logistic(a_hab2[hab_class2]+a_yr2[year_id2]+a_site[site]+a_dv[diver]+a_dmy[dmy]+X2*beta2,c);
+  
 }
+ generated quantities{
+  vector[N1+N2] log_lik;
+  for (i in 1:N1) log_lik[i] = neg_binomial_2_log_lpmf(y1[i]|a_yr1[year_id1[i]] + a_hab1[hab_class1[i]] + X1[i,]*beta1,phi);
+  for (z in 1:N2) log_lik[N1+z] = ordered_logistic_lpmf(y2[z]|a_hab2[hab_class2[z]]+a_yr2[year_id2[z]]+a_site[site[z]]+a_dv[diver[z]]+a_dmy[dmy[z]]+X2[z,]*beta2, c);
+}  
+"
 
-comp_plot_SS_comb(ts1=rvc_ts[[1]],ts2=reef_ts[[1]],x_mat = x_mat,y_mat1=y_mat_1,y_mat2=y_mat_2,sp='Blue Angelfish',GZ='Key Largo')
-
-
-blue_angel<- rvc_occs[[3]]
-
-year_index<- data.frame(yr=seq(1993,2018),y.ind=seq(1,26))
-blue_angel$year_index=year_index$y.ind[match(blue_angel$YEAR,year_index$yr)]
-X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
-
-test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_angel$NUM.total2, 
-                                                                N = nrow(blue_angel),
-                                                                N_hab = length(unique(blue_angel$HAB_CD2)),
-                                                                hab_class=as.numeric(factor(blue_angel$HAB_CD2)),
-                                                               
-                                                                N_yr =length(unique(blue_angel$YEAR)),
-                                                                year_id=as.numeric(factor(blue_angel$YEAR)),
-                                                                X=X_rvc,
-                                                                K=ncol(X_rvc),
-                                                                TT=26,
-                                                                yr_index=sort(unique(blue_angel$year_index))),
-                          pars = c('x',"sd_hab",'a_hab','sd_r','sd_q','a_yr','phi','beta'),
-                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 200, chains = 4, iter = 600, thin = 1)
-
-shinystan::launch_shinystan(test_nb_rvc)
-
-
-##Reef ordinal model
-
-library(brms)
-test<- brm(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
-               data=reef_occs[[3]],
-               family=cumulative("logit"),
-               prior = c(prior(normal(0,10), "Intercept")),
-               control = list(adapt_delta = 0.98),
-               cores=6,
-               save_all_pars = T,
-               warmup = 100, iter = 3000, chains = 2)
-
-brms::make_stancode(ordered(abundance)~1+(1|geogr)+(1|hab_class2),
-              data=reef_occs[[3]],
-              family=cumulative("logit"))
-
-reef_occs[[3]]<- reef_occs[[3]] %>% mutate(exp_binary=ifelse(exp=='E',1,0))
-
-X_rvc<- matrix(data=c(scale(as.numeric(blue_angel$DEPTH))),ncol=1,nrow=nrow(blue_angel))
-X<- matrix(data=c(scale(as.numeric(reef_occs[[3]]$btime)),scale(as.numeric(reef_occs[[3]]$averagedepth)),scale(as.numeric(reef_occs[[3]]$visibility)),scale(as.numeric(reef_occs[[3]]$current)),reef_occs[[3]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[3]]))
-
-reef_occs[[3]]$abundance2<- reef_occs[[3]]$abundance+1
-test_ord_reef<- rstan::stan(model_code = ord_test_reef, data = list(y =reef_occs[[3]]$abundance2, 
-                                                                    N = nrow(reef_occs[[3]]),
-                                                                    N_hab = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                    hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                    N_yr =length(unique(reef_occs[[3]]$year)),
-                                                                    year=as.numeric(factor(reef_occs[[3]]$year)),
-                                                                    site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                    N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                    diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                    N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                    Z=ncol(X),
-                                                                    X=X,
-                                                                    K=length(unique(reef_occs[[3]]$abundance))),
-                          pars = c('a_yr',"sigma_hab",'sigma_yr','sigma_site','sigma_dv','c'),
-                          control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
-
-test_ord_reef<- rstan::stan(model_code = ord_test_reef1, data = list(y =reef_occs[[3]]$abundance2, 
-                                                                    N = nrow(reef_occs[[3]]),
-                                                                    K=length(unique(reef_occs[[3]]$abundance))),
-                            pars = c('c','gamma'),
-                            control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
-
-test_ord_reef<- rstan::stan(model_code = ord_test_reef, data = list(y =reef_occs[[3]]$abundance2, 
-                                                                     N = nrow(reef_occs[[3]]),
-                                                                     N_hab = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                     hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                     N_yr =length(unique(reef_occs[[3]]$year)),
-                                                                     year=as.numeric(factor(reef_occs[[3]]$year)),
-                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                     K=length(unique(reef_occs[[3]]$abundance)),
-                                                                     X=X,
-                                                                    Z=ncol(X)),
-                            pars = c('c','a_hab','sigma_hab','sigma_yr','sigma_site','sigma_dv','sigma_dmy'),
-                            control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
-
-test_ord_reef2<- rstan::stan(model_code = ord_test_SS_reef, data = list(y =reef_occs[[3]]$abundance2, 
-                                                                     N = nrow(reef_occs[[3]]),
-                                                                     N_hab = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                     hab_class=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                     K=length(unique(reef_occs[[3]]$abundance)),
-                                                                     X=X,
-                                                                     Z=ncol(X),
-                                                                     TT=26,
-                                                                     N_yr=length(unique(reef_occs[[3]]$year)),
-                                                                     yr_index=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
-                                                                     year_id=as.numeric(factor(reef_occs[[3]]$year))),
-                             pars = c('c','a_hab','sd_hab','sd_site','sd_dv','sd_dmy','sd_r','sd_q','beta','x'),
-                             control = list(adapt_delta = 0.995,max_treedepth = 15), warmup = 200, chains = 4, iter = 500, thin = 1)
-
-X1<- matrix(data=c(scale(as.numeric(rvc_occs[[3]]$DEPTH))),ncol=1,nrow=nrow(rvc_occs[[3]]))
-X2<- matrix(data=c(scale(as.numeric(reef_occs[[3]]$btime)),scale(as.numeric(reef_occs[[3]]$averagedepth)),scale(as.numeric(reef_occs[[3]]$visibility)),scale(as.numeric(reef_occs[[3]]$current)),reef_occs[[3]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[3]]))
-
-
-test_comb<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc_occs[[3]]$NUM.total2,
-                                                                        y2 =reef_occs[[3]]$abundance2,
-                                                                        N1 = nrow(rvc_occs[[3]]),
-                                                                        N2 = nrow(reef_occs[[3]]),
-                                                                        N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
-                                                                        hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
-                                                                        N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                        hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                        site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                        N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                        diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                        N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                        dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                        N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                        K=length(unique(reef_occs[[3]]$abundance)),
-                                                                        X1=X1,
-                                                                        Z1=ncol(X1),
-                                                                        X2=X2,
-                                                                        Z2=ncol(X2),
-                                                                        TT=26,
-                                                                        N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
-                                                                        yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
-                                                                        year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
-                                                                        N_yr2=length(unique(reef_occs[[3]]$year)),
-                                                                        yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
-                                                                        year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                             pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
-                             control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
-
-test_sep<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[3]]$NUM.total2,
-                                                                     y2 =reef_occs[[3]]$abundance2,
-                                                                     N1 = nrow(rvc_occs[[3]]),
-                                                                     N2 = nrow(reef_occs[[3]]),
-                                                                     N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
-                                                                     hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
-                                                                     N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                     hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                     K=length(unique(reef_occs[[3]]$abundance)),
-                                                                     X1=X1,
-                                                                     Z1=ncol(X1),
-                                                                     X2=X2,
-                                                                     Z2=ncol(X2),
-                                                                     TT=26,
-                                                                     N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
-                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
-                                                                     year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
-                                                                     N_yr2=length(unique(reef_occs[[3]]$year)),
-                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
-                                                                     year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
-                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
-system.time(loo1= loo::loo(test_comb))
-start.time <- Sys.time()
-system.time(loo2<- loo::loo(test_sep_rf))
-
-
-shinystan::launch_shinystan(test_sep)
-
-params<- rstan::extract(test_sep)
-
-test_occ_sep<- rstan::stan(model_code = occ_test_SS_sep, data = list(y1 = rvc_occs[[3]]$occ,
-                                                                   y2 =reef_occs[[3]]$occ,
-                                                                   N1 = nrow(rvc_occs[[3]]),
-                                                                   N2 = nrow(reef_occs[[3]]),
-                                                                   N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
-                                                                   hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
-                                                                   N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                   hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                   site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                   N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                   diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                   N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                   dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                   N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                   X1=X1,
-                                                                   Z1=ncol(X1),
-                                                                   X2=X2,
-                                                                   Z2=ncol(X2),
-                                                                   TT=26,
-                                                                   N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
-                                                                   yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
-                                                                   year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
-                                                                   N_yr2=length(unique(reef_occs[[3]]$year)),
-                                                                   yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
-                                                                   year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                       pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2',
-                                'log_lik'),
-                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
-
-test_occ_comb<- rstan::stan(model_code = occ_test_SS_comb, data = list(y1 = rvc_occs[[3]]$occ,
-                                                                     y2 =reef_occs[[3]]$occ,
-                                                                     N1 = nrow(rvc_occs[[3]]),
-                                                                     N2 = nrow(reef_occs[[3]]),
-                                                                     N_hab1 = length(unique(rvc_occs[[3]]$HAB_CD2)),
-                                                                     hab_class1=as.numeric(factor(rvc_occs[[3]]$HAB_CD2)),
-                                                                     N_hab2 = length(unique(reef_occs[[3]]$hab_class2)),
-                                                                     hab_class2=as.numeric(factor(reef_occs[[3]]$hab_class2)),
-                                                                     site=as.numeric(factor(reef_occs[[3]]$geogr)),
-                                                                     N_site=length(unique(reef_occs[[3]]$geogr)),
-                                                                     diver=as.numeric(factor(reef_occs[[3]]$fish_memberid)),
-                                                                     N_dv=length(unique(reef_occs[[3]]$fish_memberid)),
-                                                                     dmy=as.numeric(factor(reef_occs[[3]]$site_dmy)),
-                                                                     N_dmy=length(unique(reef_occs[[3]]$site_dmy)),
-                                                                     X1=X1,
-                                                                     Z1=ncol(X1),
-                                                                     X2=X2,
-                                                                     Z2=ncol(X2),
-                                                                     TT=26,
-                                                                     N_yr1=length(unique(rvc_occs[[3]]$YEAR)),
-                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[3]]$YEAR)))),
-                                                                     year_id1=as.numeric(factor(rvc_occs[[3]]$YEAR)),
-                                                                     N_yr2=length(unique(reef_occs[[3]]$year)),
-                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[3]]$year)))),
-                                                                     year_id2=as.numeric(factor(reef_occs[[3]]$year))),
-                           pars = c('a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','a','x','a_yr1','a_yr2'),
-                           control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
-
-
-X1<- matrix(data=c(scale(as.numeric(rvc_occs[[5]]$DEPTH))),ncol=1,nrow=nrow(rvc_occs[[5]]))
-X2<- matrix(data=c(scale(as.numeric(reef_occs[[5]]$btime)),scale(as.numeric(reef_occs[[5]]$averagedepth)),scale(as.numeric(reef_occs[[5]]$visibility)),scale(as.numeric(reef_occs[[5]]$current)),reef_occs[[5]]$exp_binary),ncol=5,nrow=nrow(reef_occs[[5]]))
-
-
-test_comb_rf<- rstan::stan(model_code = abund_test_SS_comb, data = list(y1 = rvc_occs[[5]]$NUM.total2,
-                                                                     y2 =reef_occs[[5]]$abundance2,
-                                                                     N1 = nrow(rvc_occs[[5]]),
-                                                                     N2 = nrow(reef_occs[[5]]),
-                                                                     N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
-                                                                     hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
-                                                                     N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
-                                                                     hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
-                                                                     site=as.numeric(factor(reef_occs[[5]]$geogr)),
-                                                                     N_site=length(unique(reef_occs[[5]]$geogr)),
-                                                                     diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
-                                                                     N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
-                                                                     dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
-                                                                     N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
-                                                                     K=length(unique(reef_occs[[5]]$abundance)),
-                                                                     X1=X1,
-                                                                     Z1=ncol(X1),
-                                                                     X2=X2,
-                                                                     Z2=ncol(X2),
-                                                                     TT=26,
-                                                                     N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
-                                                                     yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
-                                                                     year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
-                                                                     N_yr2=length(unique(reef_occs[[5]]$year)),
-                                                                     yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
-                                                                     year_id2=as.numeric(factor(reef_occs[[5]]$year))),
-                        pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','log_lik'),
-                        control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 300, thin = 1)
-
-test_sep_rf<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = rvc_occs[[5]]$NUM.total2,
-                                                                   y2 =reef_occs[[5]]$abundance2,
-                                                                   N1 = nrow(rvc_occs[[5]]),
-                                                                   N2 = nrow(reef_occs[[5]]),
-                                                                   N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
-                                                                   hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
-                                                                   N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
-                                                                   hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
-                                                                   site=as.numeric(factor(reef_occs[[5]]$geogr)),
-                                                                   N_site=length(unique(reef_occs[[5]]$geogr)),
-                                                                   diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
-                                                                   N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
-                                                                   dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
-                                                                   N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
-                                                                   K=length(unique(reef_occs[[5]]$abundance)),
-                                                                   X1=X1,
-                                                                   Z1=ncol(X1),
-                                                                   X2=X2,
-                                                                   Z2=ncol(X2),
-                                                                   TT=26,
-                                                                   N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
-                                                                   yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
-                                                                   year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
-                                                                   N_yr2=length(unique(reef_occs[[5]]$year)),
-                                                                   yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
-                                                                   year_id2=as.numeric(factor(reef_occs[[5]]$year))),
-                       pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','log_lik'),
-                       control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 2, iter = 600, thin = 1)
-
-shinystan::launch_shinystan(test_comb_rf)
-
-params_1<- rstan::extract(test_comb_rf)
-params_2<- rstan::extract(test_sep_rf)
-
-loo1= loo::loo(test_comb_rf)
-start.time <- Sys.time()
-system.time(loo2<- loo::loo(test_sep_rf))
-
-time.taken <- end.time - start.time
-time.taken
-start.time <- Sys.time()
-loo_comp<- loo::loo_compare(loo1,loo2)
-time.taken <- end.time - start.time
-time.taken
-
-params_sep<- rstan::extract(test_sep_rf)
-
-TS_stan_abund_plot_MARSS(ts1=rvc_ts[[5]],ts2=reef_ts[[5]],sp='Rock Beauty',GZ='Key Largo',params=params_sep)
-
-
-test_sep_rf_trend<- rstan::stan(model_code = abund_test_SS_sep_trend, data = list(y1 = rvc_occs[[5]]$NUM.total2,
-                                                                      y2 =reef_occs[[5]]$abundance2,
-                                                                      N1 = nrow(rvc_occs[[5]]),
-                                                                      N2 = nrow(reef_occs[[5]]),
-                                                                      N_hab1 = length(unique(rvc_occs[[5]]$HAB_CD2)),
-                                                                      hab_class1=as.numeric(factor(rvc_occs[[5]]$HAB_CD2)),
-                                                                      N_hab2 = length(unique(reef_occs[[5]]$hab_class2)),
-                                                                      hab_class2=as.numeric(factor(reef_occs[[5]]$hab_class2)),
-                                                                      site=as.numeric(factor(reef_occs[[5]]$geogr)),
-                                                                      N_site=length(unique(reef_occs[[5]]$geogr)),
-                                                                      diver=as.numeric(factor(reef_occs[[5]]$fish_memberid)),
-                                                                      N_dv=length(unique(reef_occs[[5]]$fish_memberid)),
-                                                                      dmy=as.numeric(factor(reef_occs[[5]]$site_dmy)),
-                                                                      N_dmy=length(unique(reef_occs[[5]]$site_dmy)),
-                                                                      K=length(unique(reef_occs[[5]]$abundance)),
-                                                                      X1=X1,
-                                                                      Z1=ncol(X1),
-                                                                      X2=X2,
-                                                                      Z2=ncol(X2),
-                                                                      TT=26,
-                                                                      N_yr1=length(unique(rvc_occs[[5]]$YEAR)),
-                                                                      yr_index1=sort(unique(as.numeric(factor(rvc_occs[[5]]$YEAR)))),
-                                                                      year_id1=as.numeric(factor(rvc_occs[[5]]$YEAR)),
-                                                                      N_yr2=length(unique(reef_occs[[5]]$year)),
-                                                                      yr_index2=sort(unique(as.numeric(factor(reef_occs[[5]]$year)))),
-                                                                      year_id2=as.numeric(factor(reef_occs[[5]]$year))),
-                          pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','u1','u2','x1','x2','a_yr1','a_yr2'),
-                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
