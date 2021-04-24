@@ -76,7 +76,7 @@ rvc_filter = function(x,GZ,sp){
   return(rvc_occs)
 }
 
-ts_rvc = function(x){ #Takes the output from the previous function
+ts_rvc = function(x,miss){ #Takes the output from the previous function
   ts<- list()
   
   for(i in 1:length(x)){
@@ -85,6 +85,7 @@ ts_rvc = function(x){ #Takes the output from the previous function
     x3= x1 %>% group_by(YEAR,PRIMARY_SAMPLE_UNIT) %>% summarize(psu_abund=mean(NUM.total2)) %>% group_by(YEAR) %>% summarize(mean_abund=mean(psu_abund),sd_abund=sd(psu_abund))
     x4=left_join(x2,x3) %>% complete(YEAR=seq(1993,2018))
     
+    if(miss=='T')
     for(z in 1:nrow(x4)){
       if(is.na(x4$p.occ[z])==T){next}
       if(x4$p.occ[z]==0){
@@ -156,9 +157,9 @@ ts_reef = function(X,sp){
 
 
 ###Stan abundance plot functions###
-TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
+TS_stan_abund_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
   pdf(paste(paste(i,sp,mod,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
-   
+  
   lambda_mat<- list()  
   for(i in 1:26){
     reef_coef<- data.frame(p_0.y=NA,p_1.y=NA,p_2.y=NA,p_11.y=NA,p_101.y=NA,p_0.x=NA,p_1.x=NA,p_2.x=NA,p_11.x=NA,p_101.x=NA,lambda.y=NA,lambda.x=NA,iter=seq(1,1200))
@@ -170,6 +171,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
       reef_coef[,3]<-1-plogis(params1$c[,2]-params1$a_yr2[,i])
       reef_coef[,4]<- 0
       reef_coef[,5]<- 0
+      reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,8]<-1-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+      reef_coef[,9]<- 0
+      reef_coef[,10]<- 0
       }
       if(mod=='model2'){
         reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
@@ -177,15 +183,6 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-1-plogis(params2$c[,2]-params2$a_yr2[,i])
         reef_coef[,4]<- 0
         reef_coef[,5]<- 0
-      }
-      if(mod=='model1'){
-        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
-        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
-        reef_coef[,8]<-1-plogis(params1$c[,2]-params1$x[,i]-params1$a)
-        reef_coef[,9]<- 0
-        reef_coef[,10]<- 0
-      }
-      if(mod=='model2'){
         reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,8]<-1-plogis(params2$c[,2]-params2$x2[,i])
@@ -203,6 +200,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
       reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
       reef_coef[,4]<- 1-plogis(params1$c[,3]-params1$a_yr2[,i])
       reef_coef[,5]<- 0
+      reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+      reef_coef[,9]<- 1-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+      reef_coef[,10]<- 0
       }
       if(mod=='model2'){
         reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
@@ -210,20 +212,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
         reef_coef[,4]<- 1-plogis(params2$c[,3]-params2$a_yr2[,i])
         reef_coef[,5]<- 0
-      }
-      if(mod=='model1'){
-        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
-        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
-        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
-        reef_coef[,9]<- 1-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- 1-plogis(params2$c[,3]-params2$x2[,i])
         reef_coef[,10]<- 0
-      }
-      if(mod=='model2'){
-      reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
-      reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
-      reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
-      reef_coef[,9]<- 1-plogis(params2$c[,3]-params2$x2[,i])
-      reef_coef[,10]<- 0
       }
       reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
       reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
@@ -236,6 +229,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
       reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
       reef_coef[,4]<- plogis(params1$c[,4]-params1$a_yr2[,i])-plogis(params1$c[,3]-params1$a_yr2[,i])
       reef_coef[,5]<- 1- plogis(params1$c[,4]-params1$a_yr2[,i])
+      reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+      reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+      reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i]-params1$a)-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+      reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i]-params1$a)
       }
       if(mod=='model2'){
         reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
@@ -243,20 +241,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
         reef_coef[,4]<- plogis(params2$c[,4]-params2$a_yr2[,i])-plogis(params2$c[,3]-params2$a_yr2[,i])
         reef_coef[,5]<- 1- plogis(params2$c[,4]-params2$a_yr2[,i])
-      }
-      if(mod=='model1'){
-        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i])
-        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i])-plogis(params1$c[,1]-params1$x2[,i])
-        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i])-plogis(params1$c[,2]-params1$x2[,i])
-        reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i])-plogis(params1$c[,3]-params1$x[,i])
-        reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i])
-      }
-      if(mod=='model2'){
-      reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
-      reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
-      reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
-      reef_coef[,9]<- plogis(params2$c[,4]-params2$x2[,i])-plogis(params2$c[,3]-params2$x2[,i])
-      reef_coef[,10]<- 1-plogis(params2$c[,4]-params2$x2[,i])
+        reef_coef[,6]<-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
+        reef_coef[,9]<- plogis(params2$c[,4]-params2$x2[,i])-plogis(params2$c[,3]-params2$x2[,i])
+        reef_coef[,10]<- 1-plogis(params2$c[,4]-params2$x2[,i])
       }
       reef_coef[,11]<- apply(reef_coef[,1:5],1,abund_tranfs)
       reef_coef[,12]<- apply(reef_coef[,6:10],1,abund_tranfs)
@@ -284,7 +273,7 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
     
     y_mat_rvc<- data.frame(year=ts1$YEAR[complete.cases(ts1)],median.rvc=NA,l.95.rvc=NA,u.95.rvc=NA)
     y_mat_reef<- data.frame(year=seq(1993,2018),median.reef=NA,l.95.rf=NA,u.95.rf=NA)
-    for(i in 1:23){
+    for(i in 1:nrow(y_mat_rvc)){
       if(mod=='model1'){
        y_mat_rvc[i,2]=exp(median(params1$a_yr1[,i]))
        y_mat_rvc[i,3]=exp(quantile(params1$a_yr1[,i],0.05))
@@ -305,11 +294,11 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
     y_mat<- full_join(y_mat_reef,y_mat_rvc)
     
     par(xpd=T)
-    plot(ts1$mean_abund~c(seq(1993,2018)),type='n',ylim=c(min(na.omit(c(ts1$mean_abund,ts2$mean_abund,min(x_mat)))),max(na.omit(c(ts1$mean_abund,ts2$mean_abund,max(x_mat))))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
+    plot(y_mat$median.rvc~y_mat$year,type='n',ylim=c(min(na.omit(c(ts1$mean_abund,ts2$mean_abund,min(x_mat)))),max(na.omit(c(ts1$mean_abund,ts2$mean_abund,max(x_mat))))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
     
-    lines(x_mat[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='darkcyan')
-    lines(x_mat[,4]~c(seq(1993,2018)),lty=5,lwd=2,col='darksalmon')
-    x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
+    lines(x_mat[,1]~y_mat$year,lty=5,lwd=2,col='darkcyan')
+    lines(x_mat[,4]~y_mat$year,lty=5,lwd=2,col='darksalmon')
+    x<- c(y_mat$year, rev(y_mat$year))
     y1<- c(x_mat[,2], rev(x_mat[,3]))
     y2<-  c(x_mat[,5], rev(x_mat[,6]))
     polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
@@ -333,8 +322,9 @@ TS_stan_abund_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
 dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
 }
 
-TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
+TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
   pdf(paste(paste(i,sp,mod,GZ,'state_only',sep='_'),'.pdf',sep=''),width=8,height=6)
+  
   lambda_mat<- list()  
   for(i in 1:26){
     reef_coef<- data.frame(p_0.y=NA,p_1.y=NA,p_2.y=NA,p_11.y=NA,p_101.y=NA,p_0.x=NA,p_1.x=NA,p_2.x=NA,p_11.x=NA,p_101.x=NA,lambda.y=NA,lambda.x=NA,iter=seq(1,1200))
@@ -346,15 +336,6 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-1-plogis(params1$c[,2]-params1$a_yr2[,i])
         reef_coef[,4]<- 0
         reef_coef[,5]<- 0
-      }
-      if(mod=='model2'){
-        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
-        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
-        reef_coef[,3]<-1-plogis(params2$c[,2]-params2$a_yr2[,i])
-        reef_coef[,4]<- 0
-        reef_coef[,5]<- 0
-      }
-      if(mod=='model1'){
         reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
         reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
         reef_coef[,8]<-1-plogis(params1$c[,2]-params1$x[,i]-params1$a)
@@ -362,6 +343,11 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,10]<- 0
       }
       if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-1-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 0
+        reef_coef[,5]<- 0
         reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,8]<-1-plogis(params2$c[,2]-params2$x2[,i])
@@ -379,15 +365,6 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
         reef_coef[,4]<- 1-plogis(params1$c[,3]-params1$a_yr2[,i])
         reef_coef[,5]<- 0
-      }
-      if(mod=='model2'){
-        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
-        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
-        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
-        reef_coef[,4]<- 1-plogis(params2$c[,3]-params2$a_yr2[,i])
-        reef_coef[,5]<- 0
-      }
-      if(mod=='model1'){
         reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
         reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
         reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
@@ -395,6 +372,11 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,10]<- 0
       }
       if(mod=='model2'){
+        reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,2]<-plogis(params2$c[,2]-params2$a_yr2[,i])-plogis(params2$c[,1]-params2$a_yr2[,i])
+        reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
+        reef_coef[,4]<- 1-plogis(params2$c[,3]-params2$a_yr2[,i])
+        reef_coef[,5]<- 0
         reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
@@ -412,6 +394,11 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-plogis(params1$c[,3]-params1$a_yr2[,i])-plogis(params1$c[,2]-params1$a_yr2[,i])
         reef_coef[,4]<- plogis(params1$c[,4]-params1$a_yr2[,i])-plogis(params1$c[,3]-params1$a_yr2[,i])
         reef_coef[,5]<- 1- plogis(params1$c[,4]-params1$a_yr2[,i])
+        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i]-params1$a)-plogis(params1$c[,1]-params1$x[,i]-params1$a)
+        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i]-params1$a)-plogis(params1$c[,2]-params1$x[,i]-params1$a)
+        reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i]-params1$a)-plogis(params1$c[,3]-params1$x[,i]-params1$a)
+        reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i]-params1$a)
       }
       if(mod=='model2'){
         reef_coef[,1]<- plogis(params2$c[,1]-params2$a_yr2[,i])
@@ -419,16 +406,7 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
         reef_coef[,3]<-plogis(params2$c[,3]-params2$a_yr2[,i])-plogis(params2$c[,2]-params2$a_yr2[,i])
         reef_coef[,4]<- plogis(params2$c[,4]-params2$a_yr2[,i])-plogis(params2$c[,3]-params2$a_yr2[,i])
         reef_coef[,5]<- 1- plogis(params2$c[,4]-params2$a_yr2[,i])
-      }
-      if(mod=='model1'){
-        reef_coef[,6]=plogis(params1$c[,1]-params1$x[,i])
-        reef_coef[,7]<-plogis(params1$c[,2]-params1$x[,i])-plogis(params1$c[,1]-params1$x2[,i])
-        reef_coef[,8]<-plogis(params1$c[,3]-params1$x[,i])-plogis(params1$c[,2]-params1$x2[,i])
-        reef_coef[,9]<- plogis(params1$c[,4]-params1$x[,i])-plogis(params1$c[,3]-params1$x[,i])
-        reef_coef[,10]<- 1-plogis(params1$c[,4]-params1$x[,i])
-      }
-      if(mod=='model2'){
-        reef_coef[,6]=plogis(params2$c[,1]-params2$x2[,i])
+        reef_coef[,6]<-plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,7]<-plogis(params2$c[,2]-params2$x2[,i])-plogis(params2$c[,1]-params2$x2[,i])
         reef_coef[,8]<-plogis(params2$c[,3]-params2$x2[,i])-plogis(params2$c[,2]-params2$x2[,i])
         reef_coef[,9]<- plogis(params2$c[,4]-params2$x2[,i])-plogis(params2$c[,3]-params2$x2[,i])
@@ -482,9 +460,9 @@ TS_stan_state_only_plot_MARSS<- function(ts1,ts2,sp,GZ,mod,params1,params2){
   
   par(xpd=T)
   plot(y_mat$median.rvc~y_mat$year,type='n',ylim=c(min(x_mat),max(c(max(y_mat[,2]),max(x_mat)))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
-  lines(x_mat[,1]~c(seq(1993,2018)),lty=5,lwd=2,col='darkcyan')
-  lines(x_mat[,4]~c(seq(1993,2018)),lty=5,lwd=2,col='darksalmon')
-  x<- c(c(seq(1993,2018)), rev(c(seq(1993,2018))))
+  lines(x_mat[,1]~y_mat$year,lty=5,lwd=2,col='darkcyan')
+  lines(x_mat[,4]~y_mat$year,lty=5,lwd=2,col='darksalmon')
+  x<- c(y_mat$year, rev(y_mat$year))
   y1<- c(x_mat[,2], rev(x_mat[,3]))
   y2<-  c(x_mat[,5], rev(x_mat[,6]))
   polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
@@ -754,7 +732,7 @@ fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
 rvc_occs_1<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef)
-rvc_ts<- ts_rvc(rvc_occs_1)
+rvc_ts<- ts_rvc(rvc_occs_1,miss=T)
 rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>18)
 
 rvc.green<- do.call(rbind, lapply(rvc_ts_filter, data.frame, stringsAsFactors=FALSE))
@@ -774,7 +752,7 @@ fish_reef_trim2<- subset(fish_reef_trim,commonname %notin% drop)
 rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2)
 reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim2,geog=reef_geog_3403)
 reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim2)
-rvc_ts<- ts_rvc(rvc_occs)
+rvc_ts<- ts_rvc(rvc_occs,miss='F')
 
 ####Stan models####
 abund_test_SS_comb<-"functions {
@@ -1121,9 +1099,9 @@ mars_3403<- data.frame(SP=NA,m1.loo=NA,m2.loo=NA,m1.params=NA,m2.params=NA,mod=N
 
 
 setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp")
-for(i in 1:nrow(fish_reef_trim)){
-  spp_rvc<- rvc_occs[[i]]
-  spp_reef<- reef_occs[[i]]
+for(q in 1:nrow(fish_reef_trim)){
+  spp_rvc<- rvc_occs[[q]]
+  spp_reef<- reef_occs[[q]]
   
   X1<- matrix(data=c(scale(as.numeric(spp_rvc$DEPTH))),ncol=1,nrow=nrow(spp_rvc))
   X2<- matrix(data=c(scale(as.numeric(spp_reef$btime)),scale(as.numeric(spp_reef$averagedepth)),scale(as.numeric(spp_reef$visibility)),scale(as.numeric(spp_reef$current)),spp_reef$exp_binary),ncol=5,nrow=nrow(spp_reef))
@@ -1193,74 +1171,78 @@ for(i in 1:nrow(fish_reef_trim)){
   loo2= loo::loo(mod2)
   loo_comp<- loo::loo_compare(loo1,loo2)
  
-  mars_3403[i,1]=fish_reef_trim2$commonname[i]
-  mars_3403[i,2]=loo1$estimates[1,1]
-  mars_3403[i,3]=loo2$estimates[1,1]
-  mars_3403[i,4]=loo1$estimates[2,1]
-  mars_3403[i,5]=loo2$estimates[2,1]
-  mars_3403[i,6]=if(abs(loo_comp[2,1])>loo_comp[2,2]){rownames(loo_comp)[1]}else{'model1'}
-  mars_3403[i,7]=median(params_1$sd_q)
-  mars_3403[i,8]=median(params_2$sd_q1)
-  mars_3403[i,9]=median(params_2$sd_q2)
-  mars_3403[i,10]=median(params_1$sd_r1)
-  mars_3403[i,11]=median(params_1$sd_r2)
-  mars_3403[i,12]=median(params_2$sd_r1)
-  mars_3403[i,13]=median(params_2$sd_r2)
-  mars_3403[i,14]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r1))
-  mars_3403[i,15]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.025)
-  mars_3403[i,16]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.975)
-  mars_3403[i,17]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r2))
-  mars_3403[i,18]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.025)
-  mars_3403[i,19]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.975)
-  mars_3403[i,20]=median(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1))
-  mars_3403[i,21]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.025)
-  mars_3403[i,22]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.975)
-  mars_3403[i,23]=median(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2))
-  mars_3403[i,24]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.025)
-  mars_3403[i,25]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.975)
-  mars_3403[i,26]=exp(mean(apply(params_1$x,1,mean)))
-  mars_3403[i,27]=exp(quantile(apply(params_1$x,1,mean),0.025))
-  mars_3403[i,28]=exp(quantile(apply(params_1$x,1,mean),0.975))
-  mars_3403[i,29]=mean(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean))
-  mars_3403[i,30]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.025)
-  mars_3403[i,31]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.975)
-  mars_3403[i,32]=median(params_2$sd_hab1)
-  mars_3403[i,33]=median(params_2$sd_hab2)
-  mars_3403[i,34]=median(params_2$sd_site)
-  mars_3403[i,35]=median(params_2$sd_dmy) 
-  mars_3403[i,36]=median(params_2$sd_dv)
-  mars_3403[i,37]=median(params_2$a_hab1[,1])
-  mars_3403[i,38]=median(params_2$a_hab2[,1])
-  mars_3403[i,39]=median(params_2$a_hab1[,2])
-  mars_3403[i,40]=median(params_2$a_hab2[,2])
-  mars_3403[i,41]=median(params_2$a_hab1[,3])
-  mars_3403[i,42]=median(params_2$a_hab2[,3])
-  mars_3403[i,43]=median(params_2$a_hab1[,4])
-  mars_3403[i,44]=median(params_2$a_hab2[,4])
-  mars_3403[i,45]=median(params_2$beta2[,5])
-  mars_3403[i,46]=median(params_1$x[,26]-params_1$x[,1])
-  mars_3403[i,47]=quantile(params_1$x[,26]-params_1$x[,1],0.025)
-  mars_3403[i,48]=quantile(params_1$x[,26]-params_1$x[,1],0.975)
-  mars_3403[i,49]=median(params_2$x1[,26]-params_2$x1[,1])
-  mars_3403[i,50]=quantile(params_2$x1[,26]-params_2$x1[,1],0.025)
-  mars_3403[i,51]=quantile(params_2$x1[,26]-params_2$x1[,1],0.975)
-  mars_3403[i,52]=median(params_2$x2[,26]-params_2$x2[,1])
-  mars_3403[i,53]=quantile(params_2$x2[,26]-params_2$x2[,1],0.025)
-  mars_3403[i,54]=quantile(params_2$x2[,26]-params_2$x2[,1],0.975)
+  mars_3403[q,1]=fish_reef_trim2$commonname[q]
+  mars_3403[q,2]=loo1$estimates[1,1]
+  mars_3403[q,3]=loo2$estimates[1,1]
+  mars_3403[q,4]=loo1$estimates[2,1]
+  mars_3403[q,5]=loo2$estimates[2,1]
+  mars_3403[q,6]=if(abs(loo_comp[2,1])>loo_comp[2,2]){rownames(loo_comp)[1]}else{'model1'}
+  mars_3403[q,7]=median(params_1$sd_q)
+  mars_3403[q,8]=median(params_2$sd_q1)
+  mars_3403[q,9]=median(params_2$sd_q2)
+  mars_3403[q,10]=median(params_1$sd_r1)
+  mars_3403[q,11]=median(params_1$sd_r2)
+  mars_3403[q,12]=median(params_2$sd_r1)
+  mars_3403[q,13]=median(params_2$sd_r2)
+  mars_3403[q,14]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r1))
+  mars_3403[q,15]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.025)
+  mars_3403[q,16]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r1),0.975)
+  mars_3403[q,17]=median(params_1$sd_q/(params_1$sd_q+params_1$sd_r2))
+  mars_3403[q,18]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.025)
+  mars_3403[q,19]=quantile(params_1$sd_q/(params_1$sd_q+params_1$sd_r2),0.975)
+  mars_3403[q,20]=median(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1))
+  mars_3403[q,21]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.025)
+  mars_3403[q,22]=quantile(params_2$sd_q1/(params_2$sd_q1+params_2$sd_r1),0.975)
+  mars_3403[q,23]=median(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2))
+  mars_3403[q,24]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.025)
+  mars_3403[q,25]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.975)
+  mars_3403[q,26]=exp(mean(apply(params_1$x,1,mean)))
+  mars_3403[q,27]=exp(quantile(apply(params_1$x,1,mean),0.025))
+  mars_3403[q,28]=exp(quantile(apply(params_1$x,1,mean),0.975))
+  mars_3403[q,29]=mean(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean))
+  mars_3403[q,30]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.025)
+  mars_3403[q,31]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.975)
+  mars_3403[q,32]=median(params_2$sd_hab1)
+  mars_3403[q,33]=median(params_2$sd_hab2)
+  mars_3403[q,34]=median(params_2$sd_site)
+  mars_3403[q,35]=median(params_2$sd_dmy) 
+  mars_3403[q,36]=median(params_2$sd_dv)
+  mars_3403[q,37]=median(params_2$a_hab1[,1])
+  mars_3403[q,38]=median(params_2$a_hab2[,1])
+  mars_3403[q,39]=median(params_2$a_hab1[,2])
+  mars_3403[q,40]=median(params_2$a_hab2[,2])
+  mars_3403[q,41]=median(params_2$a_hab1[,3])
+  mars_3403[q,42]=median(params_2$a_hab2[,3])
+  mars_3403[q,43]=median(params_2$a_hab1[,4])
+  mars_3403[q,44]=median(params_2$a_hab2[,4])
+  mars_3403[q,45]=median(params_2$beta2[,5])
+  mars_3403[q,46]=median(params_1$x[,26]-params_1$x[,1])
+  mars_3403[q,47]=quantile(params_1$x[,26]-params_1$x[,1],0.025)
+  mars_3403[q,48]=quantile(params_1$x[,26]-params_1$x[,1],0.975)
+  mars_3403[q,49]=median(params_2$x1[,26]-params_2$x1[,1])
+  mars_3403[q,50]=quantile(params_2$x1[,26]-params_2$x1[,1],0.025)
+  mars_3403[q,51]=quantile(params_2$x1[,26]-params_2$x1[,1],0.975)
+  mars_3403[q,52]=median(params_2$x2[,26]-params_2$x2[,1])
+  mars_3403[q,53]=quantile(params_2$x2[,26]-params_2$x2[,1],0.025)
+  mars_3403[q,54]=quantile(params_2$x2[,26]-params_2$x2[,1],0.975)
   
-  TS_stan_abund_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
-  TS_stan_abund_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
-  TS_stan_state_only_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
-  TS_stan_state_only_plot_MARSS(ts1=rvc_ts[[i]],ts2=reef_ts[[i]],sp=fish_reef_trim$commonname[i],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  TS_stan_abund_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
+  dev.off()
+  TS_stan_abund_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  dev.off()
+  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
+  dev.off()
+  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  dev.off()
   
   setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp/data runs")
-  write.csv(mars_3403[i,],paste(gsub(' ', '_',fish_reef_trim2$commonname[i]),'.csv',sep=''))
-  dev.off()
-  print(i)
+  write.csv(mars_3403[q,],paste(gsub(' ', '_',fish_reef_trim2$commonname[q]),'.csv',sep=''))
+  setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp")
+  print(q)
   
 }
 
-
+shinystan::launch_shinystan(mod1)
 
 
 
@@ -1351,7 +1333,7 @@ test_nb_rvc<- rstan::stan(model_code = nb_test_SS_rvc, data = list(y = blue_ange
                           pars = c('x',"sd_hab",'a_hab','sd_r','sd_q','a_yr','phi','beta'),
                           control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 200, chains = 4, iter = 600, thin = 1)
 
-shinystan::launch_shinystan(test_nb_rvc)
+shinystan::launch_shinystan(mod1)
 
 
 ##Reef ordinal model
