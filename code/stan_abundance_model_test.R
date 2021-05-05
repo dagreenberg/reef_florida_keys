@@ -732,7 +732,7 @@ fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
 rvc_occs_1<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef)
-rvc_ts<- ts_rvc(rvc_occs_1,miss=T)
+rvc_ts<- ts_rvc(rvc_occs_1,miss="T")
 rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>18)
 
 rvc.green<- do.call(rbind, lapply(rvc_ts_filter, data.frame, stringsAsFactors=FALSE))
@@ -745,9 +745,10 @@ drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
          "White Margate","Blue Runner","Yellow Jack","Cero","Bluelip Parrotfish",
          "Bucktooth Parrotfish","Green Razorfish","Tobaccofish","Sharksucker",
          "Glassy Sweeper","Dog Snapper","Atlantic Spadefish","Yellowhead Jawfish")
+#add Cubbyu, Yellowtail Reeffish
 
 fish_reef_trim2<- subset(fish_reef_trim,commonname %notin% drop)
-
+rownames(fish_reef_trim2)<- seq(1:nrow(fish_reef_trim2))
 
 rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2)
 reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim2,geog=reef_geog_3403)
@@ -874,14 +875,14 @@ model{
   a ~ normal(0,5); //scalar
   
   //variance terms
-  sd_hab1 ~ inv_gamma(2, 1);
-  sd_hab2 ~ inv_gamma(2, 1);
+  sd_hab1 ~ inv_gamma(1, 1);
+  sd_hab2 ~ inv_gamma(1, 1);
   sd_q ~inv_gamma(2,0.25);
   sd_r1 ~ inv_gamma(2,0.25);
   sd_r2 ~ inv_gamma(2,0.25);
-  sd_site ~ inv_gamma(2, 1);
-  sd_dv ~ inv_gamma(2, 1);
-  sd_dmy ~ inv_gamma(2, 1);
+  sd_site ~ inv_gamma(1, 1);
+  sd_dv ~ inv_gamma(1, 1);
+  sd_dmy ~ inv_gamma(1, 1);
   
   //varying intercepts
   a_hab1 ~ normal(0, sd_hab1);
