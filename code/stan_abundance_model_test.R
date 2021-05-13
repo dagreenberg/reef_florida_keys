@@ -1,6 +1,7 @@
 rm(list=ls())
-setwd("C:/Users/14388/Desktop/reef_florida_keys_data")
 library(rstan);library(loo);library(bayesplot);library(dplyr);library(tidyverse);library(stringr);library(lubridate);library(rlist)
+library(here)
+here()
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
@@ -12,7 +13,7 @@ abund_tranfs<- function(probs){
   return(sum)
 }
 
-ord_to_n<- function(x,c){
+mean_ord_to_n<- function(x,c){
   ord_yr=list()
   abund_x=matrix(ncol=26,nrow=nrow(c))
   if(ncol(c)==2){
@@ -28,28 +29,66 @@ ord_to_n<- function(x,c){
   }
   if(ncol(c)==3){
     for(i in 1:26){
-    ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
-    ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
-    ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
-    ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
-    ord_yr[[i]][,4]<- 1-plogis(c[,3]-x[,i])
-    ord_yr[[i]][,5]<- 0
-    abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
+      ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
+      ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
+      ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
+      ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
+      ord_yr[[i]][,4]<- 1-plogis(c[,3]-x[,i])
+      ord_yr[[i]][,5]<- 0
+      abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
     }
   }
   if(ncol(c)==4){
     for(i in 1:26){
-    ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
-    ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
-    ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
-    ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
-    ord_yr[[i]][,4]<- plogis(c[,4]-x[,i])-plogis(c[,3]-x[,i])
-    ord_yr[[i]][,5]<- 1--plogis(c[,4]-x[,i])
-    abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
+      ord_yr[[i]]<- matrix(ncol=5,nrow=nrow(c))
+      ord_yr[[i]][,1]<- plogis(c[,1]-x[,i])
+      ord_yr[[i]][,2]<-plogis(c[,2]-x[,i])-plogis(c[,1]-x[,i])
+      ord_yr[[i]][,3]<-plogis(c[,3]-x[,i])-plogis(c[,2]-x[,i])
+      ord_yr[[i]][,4]<- plogis(c[,4]-x[,i])-plogis(c[,3]-x[,i])
+      ord_yr[[i]][,5]<- 1-plogis(c[,4]-x[,i])
+      abund_x[,i]<- apply(ord_yr[[i]][,1:5],1,abund_tranfs)
     }
   }
   return(abund_x)
 }
+
+
+ord_to_n<- function(x,c){
+  abund_x<- numeric(length(x))
+  p= matrix(ncol=5,nrow=length(x))
+  if(ncol(c)==2){
+    p[,1]=plogis(c[,1]-x)
+    p[,2]=plogis(c[,2]-x)-plogis(c[,1]-x)
+    p[,3]=1-plogis(c[,2]-x)
+    p[,4]=0
+    p[,5]=0
+    for(i in 1:length(x)){
+      abund_x[i]=abund_tranfs(p[i,])  
+    }
+  }
+  if(ncol(c)==3){
+    p[,1]=plogis(c[,1]-x)
+    p[,2]=plogis(c[,2]-x)-plogis(c[,1]-x)
+    p[,3]=plogis(c[,3]-x)-plogis(c[,2]-x)
+    p[,4]=1-plogis(c[,3]-x)
+    p[,5]=0
+    for(i in 1:length(x)){
+      abund_x[i]=abund_tranfs(p[i,])  
+    }
+  }
+  if(ncol(c)==4){
+    p[,1]=plogis(c[,1]-x)
+    p[,2]=plogis(c[,2]-x)-plogis(c[,1]-x)
+    p[,3]=plogis(c[,3]-x)-plogis(c[,2]-x)
+    p[,4]=plogis(c[,4]-x[,i])-plogis(c[,3]-x[,i])
+    p[,5]=1-plogis(c[,4]-x[,i])
+    for(i in 1:length(x)){
+      abund_x[i]=abund_tranfs(p[i,])  
+    }
+  }
+  return(abund_x)
+}
+
 
 rvc_filter = function(x,GZ,sp){
   x$SSU_YEAR<- paste(x$PRIMARY_SAMPLE_UNIT,x$STATION_NR,x$YEAR,sep='_')
@@ -157,7 +196,7 @@ ts_reef = function(X,sp){
 
 
 ###Stan abundance plot functions###
-TS_stan_abund_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
+TS_stan_abund_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2,path){
   pdf(paste(paste(i,sp,mod,GZ,sep='_'),'.pdf',sep=''),width=8,height=6)
   
   lambda_mat<- list()  
@@ -304,11 +343,7 @@ TS_stan_abund_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
     polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
     polygon(x, y2, col = adjustcolor('darksalmon', alpha = 0.2), border=NA) # Add uncertainty polygon
   
-  #  for(z in 1:26){
-  #    lines(c(y_mat[z,6],y_mat[z,7])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('dodgerblue4',alpha.f=0.6))
-  #    lines(c(y_mat[z,3],y_mat[z,4])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('firebrick4',alpha.f=0.6))
-  #  }
-  lines(ts1$mean_abund~ts1$YEAR,col=adjustcolor('navy',alpha.f=0.5),lwd=2)
+   lines(ts1$mean_abund~ts1$YEAR,col=adjustcolor('navy',alpha.f=0.5),lwd=2)
   points(ts1$mean_abund~ts1$YEAR,col='white',pch=21,bg=adjustcolor('navy',alpha.f=0.5),cex=1.5)
   lines(y_mat$median.rvc~c(seq(1993,2018)),col='dodgerblue4',lwd=2)
   points(y_mat$median.rvc~c(seq(1993,2018)),col='white',pch=21,bg='dodgerblue4',cex=1.5)
@@ -322,8 +357,8 @@ TS_stan_abund_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
 dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
 }
 
-TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
-  pdf(paste(paste(i,sp,mod,GZ,'state_only',sep='_'),'.pdf',sep=''),width=8,height=6)
+TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2,path){
+  pdf(file.path(path,paste(paste(i,sp,mod,GZ,sep='_'),'.pdf',sep='')),width=8,height=6)
   
   lambda_mat<- list()  
   for(i in 1:26){
@@ -459,7 +494,7 @@ TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
   y_mat<- full_join(y_mat_reef,y_mat_rvc)
   
   par(xpd=T)
-  plot(y_mat$median.rvc~y_mat$year,type='n',ylim=c(min(x_mat),max(c(max(y_mat[,2]),max(x_mat)))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
+  plot(y_mat$median.rvc~y_mat$year,type='n',ylim=c(min(x_mat)/2,max(c(max(y_mat[,2])),c(max(na.omit(y_mat[,5]))),max(x_mat))),col='darkblue',bty='l',ylab=expression('Mean count per survey'),xlab='Year',main=paste(sp,GZ,sep=', '))
   lines(x_mat[,1]~y_mat$year,lty=5,lwd=2,col='darkcyan')
   lines(x_mat[,4]~y_mat$year,lty=5,lwd=2,col='darksalmon')
   x<- c(y_mat$year, rev(y_mat$year))
@@ -468,10 +503,6 @@ TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
   polygon(x, y1, col = adjustcolor('darkcyan', alpha = 0.1), border=NA) # Add uncertainty polygon
   polygon(x, y2, col = adjustcolor('darksalmon', alpha = 0.2), border=NA) # Add uncertainty polygon
   
-  #for(z in 1:26){
- #   lines(c(y_mat[z,6],y_mat[z,7])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('dodgerblue4',alpha.f=0.6))
- #   lines(c(y_mat[z,3],y_mat[z,4])~rep(y_mat[z,1],2),lwd=1,col=adjustcolor('firebrick4',alpha.f=0.6))
- # }
   lines(y_mat$median.rvc~y_mat$year,col='dodgerblue4',lwd=2)
   points(y_mat$median.rvc~y_mat$year,col='white',pch=21,bg='dodgerblue4',cex=1.5)
   
@@ -480,7 +511,7 @@ TS_stan_state_only_plot_MARSS<- function(i,ts1,ts2,sp,GZ,mod,params1,params2){
   
   legend(2013,c(max(c(max(y_mat[,2]),max(x_mat)))*1.15),c('Est. RVC surveys','Est. REEF surveys'),text.col=c(adjustcolor('navy',alpha.f=0.5),adjustcolor('darkred',alpha.f=0.5),'dodgerblue4','firebrick4'),bty='n')
   dev.off(paste(paste(sp,GZ,sep='_'),'.pdf',sep=''))
-  
+  dev.off()
 }
 
 
@@ -719,9 +750,14 @@ rvc_sites$hab_class<- as.factor(rvc_grid$habclass[rvc_sites$grid_match])
 
 reef_geog_3403<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3403)
 
+reef_geog_3408<- reef_geog %>% subset(is.na(grid_match)==F & region.id==3408)
+
 write.csv(reef_geog_3403,'reef_key_largo_sites.csv')
 rvc_geog_3403<- subset(rvc_sites,region.id==3403)
 write.csv(rvc_geog_3403,'rvc_key_largo_sites.csv')
+rvc_geog_3408<- subset(rvc_sites,region.id==3408)
+write.csv(reef_geog_3408,'reef_key_west_sites.csv')
+write.csv(rvc_geog_3408,'rvc_key_west_sites.csv')
 
 ### 4. Creating RVC time-series ###
 #Fish data from REEF - remove ultra rare and basket species designations
@@ -735,13 +771,14 @@ fish_reef$rvc_code<- fish_rvc$SPECIES_CD[m]
 
 fk_93_18<- subset(fk_79_18,YEAR>=1993) #Subset for the dataset from 1993 to match the first year of REEF surveys
 
-rvc_occs_1<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef)
-rvc_ts<- ts_rvc(rvc_occs_1,miss="T")
-rvc_ts_filter<- rlist::list.filter(rvc_ts,length(na.omit(p.occ))>18)
+###Key Largo data set-up####
+rvc_occs_3403_1<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef)
+rvc_ts_3403<- ts_rvc(rvc_occs_3403_1,miss="T")
+rvc_ts_filter_3403<- rlist::list.filter(rvc_ts_3403,length(na.omit(p.occ))>18) #Removes all species that had >30% of years where it was not sighted in the RVC dataset
 
-rvc.green<- do.call(rbind, lapply(rvc_ts_filter, data.frame, stringsAsFactors=FALSE))
-rvc.green.sp<- unique(rvc.green$sp)
-fish_reef_trim<- subset(fish_reef, rvc_code %in% rvc.green.sp)
+rvc_green_3403<- do.call(rbind, lapply(rvc_ts_filter_3403, data.frame, stringsAsFactors=FALSE))
+rvc_green_sp_3403<- unique(rvc_green_3403$sp)
+fish_reef_trim_3403<- subset(fish_reef, rvc_code %in% rvc_green_sp_3403)
 
 ##Species to drop based on poor model fits
 drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
@@ -751,13 +788,39 @@ drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
          "Glassy Sweeper","Dog Snapper","Atlantic Spadefish","Yellowhead Jawfish")
 #add Cubbyu, Yellowtail Reeffish
 
-fish_reef_trim2<- subset(fish_reef_trim,commonname %notin% drop)
-rownames(fish_reef_trim2)<- seq(1:nrow(fish_reef_trim2))
+fish_reef_trim2_3403<- subset(fish_reef_trim_3403,commonname %notin% drop)
+rownames(fish_reef_trim2_3403)<- seq(1:nrow(fish_reef_trim2_3403))
 
-rvc_occs<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2)
-reef_occs<- reef_filter(R,GZ='3403',sp=fish_reef_trim2,geog=reef_geog_3403)
-reef_ts<- ts_reef(reef_occs,sp=fish_reef_trim2)
-rvc_ts<- ts_rvc(rvc_occs,miss='F')
+rvc_occs_3403<- rvc_filter(fk_93_18,GZ='3403',sp=fish_reef_trim2_3403)
+reef_occs_3403<- reef_filter(R,GZ='3403',sp=fish_reef_trim2_3403,geog=reef_geog_3403)
+reef_ts_3403<- ts_reef(reef_occs_3403,sp=fish_reef_trim2_3403)
+rvc_ts_3403<- ts_rvc(rvc_occs_3403,miss='F') #Turns
+
+
+###Key West data set-up####
+rvc_occs_3408_1<- rvc_filter(fk_93_18,GZ='3408',sp=fish_reef) #Extract RVC data in region 3408 (Key West) from 1993 to 2018
+rvc_ts_3408_1<- ts_rvc(rvc_occs_3408_1,miss="T") #Create RVC summary time-series to assess data availability. 
+#Years with 0 encounters for a species converted to NA values
+rvc_ts_filter_3408<- rlist::list.filter(rvc_ts_3408_1,length(na.omit(p.occ))>18) #Remove time-series with less than 18 years of sightings
+
+rvc_green_3408<- do.call(rbind, lapply(rvc_ts_filter_3408, data.frame, stringsAsFactors=FALSE)) #collapse list
+rvc_green_sp_3408<- unique(rvc_green_3408$sp) #Extract species names of the filtered list
+fish_reef_trim_3408<- subset(fish_reef, rvc_code %in% rvc_green_sp_3408) #Only keep those species with sufficient data
+
+##Species to drop based on taxonomic changes (splits), lack of data or not strictly coral-reef associated
+drop<- c("Scrawled Cowfish","Purple Reeffish","Beaugregory","Dusky Damselfish",
+         "Longfin Damselfish","Reef Croaker","Spotted Moray","Black Margate",
+         "White Margate","Blue Runner","Yellow Jack","Cero","Bluelip Parrotfish",
+         "Bucktooth Parrotfish","Green Razorfish","Tobaccofish","Sharksucker",
+         "Glassy Sweeper","Dog Snapper","Atlantic Spadefish","Yellowhead Jawfish","Yellowtail Reeffish","Cubbyu")
+
+fish_reef_trim_3408_2<- subset(fish_reef_trim_3408,commonname %notin% drop)
+rownames(fish_reef_trim_3408_2)<- seq(1:nrow(fish_reef_trim_3408_2))
+
+rvc_occs_3408<- rvc_filter(fk_93_18,GZ='3408',sp=fish_reef_trim_3408_2)
+reef_occs_3408<- reef_filter(R,GZ='3408',sp=fish_reef_trim_3408_2,geog=reef_geog_3408)
+reef_ts_3408<- ts_reef(reef_occs_3408,sp=fish_reef_trim2)
+rvc_ts_3408<- ts_rvc(rvc_occs_3408,miss='F')
 
 ####Stan models####
 abund_test_SS_comb<-"functions {
@@ -1040,15 +1103,15 @@ model{
   x02 ~ normal(0,5); //initial state - reef
 
   //variance terms
-  sd_hab1 ~ inv_gamma(2, 1);
-  sd_hab2 ~ inv_gamma(2, 1);
+  sd_hab1 ~ inv_gamma(1, 1);
+  sd_hab2 ~ inv_gamma(1, 1);
   sd_q1 ~ inv_gamma(2,0.25);
   sd_q2 ~ inv_gamma(2,0.25);
   sd_r1 ~ inv_gamma(2,0.25);
   sd_r2 ~ inv_gamma(2,0.25);
-  sd_site ~ inv_gamma(2, 1);
-  sd_dv ~ inv_gamma(2, 1);
-  sd_dmy ~ inv_gamma(2, 1);
+  sd_site ~ inv_gamma(1, 1);
+  sd_dv ~ inv_gamma(1, 1);
+  sd_dmy ~ inv_gamma(1, 1);
   
   //varying intercepts
   a_hab1 ~ normal(0, sd_hab1);
@@ -1081,12 +1144,7 @@ model{
 
 
 
-####Batched abundance model####
-mod1<- vector(mode='list',length=nrow(fish_reef_trim2))
-mod2<- vector(mode='list',length=nrow(fish_reef_trim2))
-params_1<- vector(mode='list',length=nrow(fish_reef_trim2))
-params_2<- vector(mode='list',length=nrow(fish_reef_trim2))
-
+####Batched - Key Largo####
 mars_3403<- data.frame(SP=NA,m1.loo=NA,m2.loo=NA,m1.params=NA,m2.params=NA,mod=NA,m1.sd_q=NA,m2.sd_q1=NA,
                        m2.sd_q2=NA,m1.sd_r1=NA,m1.sd_r2=NA,m2.sd_r1=NA,m2.sd_r2=NA,prop.sd.m1.rvc=NA,prop.sd.m1.rvc.l95=NA,
                        prop.sd.m1.rvc.u95=NA,prop.sd.m1.reef=NA,prop.sd.m1.reef.l95=NA,prop.sd.m1.reef.u95=NA,
@@ -1100,13 +1158,11 @@ mars_3403<- data.frame(SP=NA,m1.loo=NA,m2.loo=NA,m1.params=NA,m2.params=NA,mod=N
                        b.sg.reef=NA,b.expert.reef=NA,diff_xf.x0.comb=NA,diff_xf.x0.comb.l95=NA,
                        diff_xf.x0.comb.u95=NA,diff_xf.x0.rvc=NA,diff_xf.x0.rvc.l95=NA,
                        diff_xf.x0.rvc.u95=NA,diff_xf.x0.reef=NA,diff_xf.x0.reef.l95=NA,
-                       diff_xf.x0.reef.u95=NA)
+                       diff_xf.x0.reef.u95=NA,scalar=NA,scalar.l95=NA,scalar.u95=NA)
 
-
-setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp")
-for(q in 1:nrow(fish_reef_trim)){
-  spp_rvc<- rvc_occs[[q]]
-  spp_reef<- reef_occs[[q]]
+for(q in 1:nrow(fish_reef_trim_3403)){
+  spp_rvc<- rvc_occs_3403[[q]]
+  spp_reef<- reef_occs_3403[[q]]
   
   X1<- matrix(data=c(scale(as.numeric(spp_rvc$DEPTH))),ncol=1,nrow=nrow(spp_rvc))
   X2<- matrix(data=c(scale(as.numeric(spp_reef$btime)),scale(as.numeric(spp_reef$averagedepth)),scale(as.numeric(spp_reef$visibility)),scale(as.numeric(spp_reef$current)),spp_reef$exp_binary),ncol=5,nrow=nrow(spp_reef))
@@ -1137,7 +1193,7 @@ for(q in 1:nrow(fish_reef_trim)){
                                                                        N_yr2=length(unique(spp_reef$year)),
                                                                        yr_index2=sort(unique(as.numeric(factor(spp_reef$year)))),
                                                                        year_id2=as.numeric(factor(spp_reef$year))),
-                          pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','a_yr1','a_yr2','log_lik'),
+                          pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q','x','a','a_yr1','a_yr2','beta1','beta2','log_lik'),
                           control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
   
   mod2<- rstan::stan(model_code = abund_test_SS_sep, data = list(y1 = spp_rvc$NUM.total2,
@@ -1166,7 +1222,7 @@ for(q in 1:nrow(fish_reef_trim)){
                                                                      N_yr2=length(unique(spp_reef$year)),
                                                                      yr_index2=sort(unique(as.numeric(factor(spp_reef$year)))),
                                                                      year_id2=as.numeric(factor(spp_reef$year))),
-                         pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','beta2','log_lik'),
+                         pars = c('c','a_hab1','a_hab2','sd_hab1','sd_hab2','sd_site','sd_dv','sd_dmy','sd_r1','sd_r2','sd_q1','sd_q2','x1','x2','a_yr1','a_yr2','beta1','beta2','log_lik'),
                          control = list(adapt_delta = 0.95,max_treedepth = 15), warmup = 150, chains = 4, iter = 450, thin = 1)
   
   params_1<- rstan::extract(mod1)
@@ -1201,12 +1257,12 @@ for(q in 1:nrow(fish_reef_trim)){
   mars_3403[q,23]=median(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2))
   mars_3403[q,24]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.025)
   mars_3403[q,25]=quantile(params_2$sd_q2/(params_2$sd_q2+params_2$sd_r2),0.975)
-  mars_3403[q,26]=exp(mean(apply(params_1$x,1,mean)))
-  mars_3403[q,27]=exp(quantile(apply(params_1$x,1,mean),0.025))
-  mars_3403[q,28]=exp(quantile(apply(params_1$x,1,mean),0.975))
-  mars_3403[q,29]=mean(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean))
-  mars_3403[q,30]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.025)
-  mars_3403[q,31]=quantile(apply(ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.975)
+  mars_3403[q,26]=exp(mean(apply(params_2$x1,1,mean)))
+  mars_3403[q,27]=exp(quantile(apply(params_2$x1,1,mean),0.025))
+  mars_3403[q,28]=exp(quantile(apply(params_2$x1,1,mean),0.975))
+  mars_3403[q,29]=mean(apply(mean_ord_to_n(x=params_2$x2,c=params_2$c),1,mean))
+  mars_3403[q,30]=quantile(apply(mean_ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.025)
+  mars_3403[q,31]=quantile(apply(mean_ord_to_n(x=params_2$x2,c=params_2$c),1,mean),0.975)
   mars_3403[q,32]=median(params_2$sd_hab1)
   mars_3403[q,33]=median(params_2$sd_hab2)
   mars_3403[q,34]=median(params_2$sd_site)
@@ -1227,23 +1283,28 @@ for(q in 1:nrow(fish_reef_trim)){
   mars_3403[q,49]=median(params_2$x1[,26]-params_2$x1[,1])
   mars_3403[q,50]=quantile(params_2$x1[,26]-params_2$x1[,1],0.025)
   mars_3403[q,51]=quantile(params_2$x1[,26]-params_2$x1[,1],0.975)
-  mars_3403[q,52]=median(params_2$x2[,26]-params_2$x2[,1])
-  mars_3403[q,53]=quantile(params_2$x2[,26]-params_2$x2[,1],0.025)
-  mars_3403[q,54]=quantile(params_2$x2[,26]-params_2$x2[,1],0.975)
+  mars_3403[q,52]=median(log(ord_to_n(params_2$x2[,26],params_2$c))-log(ord_to_n(params_2$x2[,1],params_2$c)))
+  mars_3403[q,53]=quantile(log(ord_to_n(params_2$x2[,26],params_2$c))-log(ord_to_n(params_2$x2[,1],params_2$c)),0.025)
+  mars_3403[q,54]=quantile(log(ord_to_n(params_2$x2[,26],params_2$c))-log(ord_to_n(params_2$x2[,1],params_2$c)),0.975)
+  mars_3403[q,55]=median(params_1$a)
+  mars_3403[q,56]=quantile(params_1$a,0.025)
+  mars_3403[q,57]=quantile(params_1$a,0.975)
   
-  TS_stan_abund_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
+  plot_path<- here('outputs','figures')
+  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2,path=plot_path)
   dev.off()
-  TS_stan_abund_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
+  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2,path=plot_path)
   dev.off()
-  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model1',params1=params_1,params2=params_2)
-  dev.off()
-  TS_stan_state_only_plot_MARSS(i=q,ts1=rvc_ts[[q]],ts2=reef_ts[[q]],sp=fish_reef_trim2$commonname[q],GZ='Key Largo',mod='model2',params1=params_1,params2=params_2)
-  dev.off()
+
+  mod_sum_path<- here('outputs','species model summary','Key Largo')
+  write.csv(mars_3403[q,],file.path(mod_sum_path,paste(gsub(' ', '_',fish_reef_trim2$commonname[q]),'.csv',sep='')))
+  mod_par_path<- here('outputs','species parameter estimates','Key Largo')
+  write.csv(as.data.frame(params_1)[,1:95],file.path(mod_par_path,paste(gsub(' ', '_',fish_reef_trim2$commonname[q]),'_model1','.csv',sep='')))
+  write.csv(as.data.frame(params_2)[,1:125],file.path(mod_par_path,paste(gsub(' ', '_',fish_reef_trim2$commonname[q]),'_model1','.csv',sep='')))
   
-  setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp/data runs")
-  write.csv(mars_3403[q,],paste(gsub(' ', '_',fish_reef_trim2$commonname[q]),'.csv',sep=''))
-  setwd("C:/Users/14388/Desktop/reef_florida_keys_data/Key Largo - stan comp")
+  
   print(q)
+  
   
 }
 
