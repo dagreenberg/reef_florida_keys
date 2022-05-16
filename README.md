@@ -1,4 +1,4 @@
-#Validating citizen science natural history observations as a tool for assessing the status and trends of marine species
+##Validating citizen science natural history observations as a tool for assessing the status and trends of marine species
 Dan A. Greenberg //
 dan.greenberg01@gmail.com
 
