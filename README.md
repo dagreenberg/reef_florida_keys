@@ -1,5 +1,5 @@
-# reef_florida_keys
+#Validating citizen science natural history observations as a tool for assessing the status and trends of marine species
 Dan A. Greenberg //
-dgreenberg@ucsd.edu
+dan.greenberg01@gmail.com
 
-Multivariate time-series comparisons of citizen science and systematic surveys of reef fish communities in the Florida Keys (1980 - 2018).
+This repository contains code and additional results for the manuscript "Validating citizen science natural history observations as a tool for assessing the status and trends of marine species" where we compare population time-series from REEF citizen science data to the Reef Visual Census (https://github.com/jeremiaheb/rvc) monitoring program for 100 distinct species in Key Largo and Key West.
